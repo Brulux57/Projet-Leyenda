@@ -1,0 +1,174 @@
+<!doctype html>
+<!--
+  La Ruche : banc d'essai local des modèles « lucky model » (photo / peinture / autre)
+
+  Page 100 % statique : on l'ouvre directement (double-clic sur index.html), sans serveur.
+  - engine.js : mini moteur d'inférence (refait en JavaScript les calculs du réseau Keras)
+  - app.js    : interface (chargement des modèles, dépôt d'images, affichage des résultats)
+  - modeles/  : modèles exportés par convertir_modeles.py (architecture + poids en .js)
+  Les poids sont des fichiers .js (et non .json) car un navigateur refuse de lire un .json
+  local avec fetch() depuis une page ouverte en file:// ; une balise <script> passe toujours.
+-->
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>La Ruche · Lucky Model</title>
+  <meta name="description" content="Compare dans le navigateur les modèles de classification d'images photo / peinture / autre.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 4 90 27v46L50 96 10 73V27z' fill='%23f5b301'/%3E%3Cpath d='M30 42h40M28 55h44M32 68h36' stroke='%23382008' stroke-width='8' stroke-linecap='round'/%3E%3C/svg%3E">
+</head>
+<body>
+  <!-- Abeille en SVG, définie une fois et réutilisée partout avec <use href="#bee"> -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <linearGradient id="g-body" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#ffd23f"/><stop offset="1" stop-color="#f29e02"/>
+      </linearGradient>
+      <clipPath id="clip-body"><ellipse cx="50" cy="56" rx="30" ry="21"/></clipPath>
+      <symbol id="bee" viewBox="4 2 94 84">
+        <g class="wing wing-back"><ellipse cx="44" cy="30" rx="15" ry="22" transform="rotate(-25 44 30)" fill="#dcefff" fill-opacity=".75" stroke="#5078a0" stroke-opacity=".5"/></g>
+        <path d="M80 56 L95 56 L81 61 Z" fill="#382008"/>
+        <ellipse cx="50" cy="56" rx="30" ry="21" fill="url(#g-body)"/>
+        <g clip-path="url(#clip-body)" fill="#382008">
+          <rect x="44" y="30" width="9" height="60" rx="3"/>
+          <rect x="60" y="30" width="9" height="60" rx="3"/>
+          <rect x="75" y="30" width="10" height="60"/>
+        </g>
+        <circle cx="26" cy="54" r="15" fill="#382008"/>
+        <circle cx="21" cy="50" r="4.2" fill="#fff"/><circle cx="20" cy="50" r="2.2" fill="#111"/>
+        <path d="M17 60 q5 4 10 0" stroke="#ffd23f" stroke-width="2" fill="none" stroke-linecap="round"/>
+        <path d="M24 40 q-4 -12 -12 -14 M30 40 q2 -12 -2 -17" stroke="#382008" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+        <circle cx="12" cy="26" r="3" fill="#382008"/><circle cx="28" cy="23" r="3" fill="#382008"/>
+        <g class="wing wing-front"><ellipse cx="54" cy="28" rx="14" ry="21" transform="rotate(20 54 28)" fill="#dcefff" fill-opacity=".75" stroke="#5078a0" stroke-opacity=".5"/></g>
+      </symbol>
+    </defs>
+  </svg>
+
+  <!-- Abeilles décoratives en fond -->
+  <div class="swarm" aria-hidden="true">
+    <div class="flyer f1"><svg class="bee"><use href="#bee"/></svg></div>
+    <div class="flyer f2"><svg class="bee"><use href="#bee"/></svg></div>
+    <div class="flyer f3"><svg class="bee"><use href="#bee"/></svg></div>
+    <div class="flyer f4"><svg class="bee"><use href="#bee"/></svg></div>
+  </div>
+
+  <header class="hero">
+    <div class="hero-badge hex" aria-hidden="true"><svg class="bee bob"><use href="#bee"/></svg></div>
+    <div>
+      <p class="eyebrow">Banc d'essai local · <span id="model-count">comparateur de modèles</span></p>
+      <h1>La Ruche <span>à prédictions</span></h1>
+      <p class="lede">Dépose une image : elle passe dans chacun de nos réseaux de neurones, qui disent si c'est une <b>photo</b>, une <b>peinture</b> ou <b>autre chose</b>. Les verdicts s'affichent côte à côte. Tout tourne dans ton navigateur : aucune image ne quitte ton ordinateur.</p>
+    </div>
+    <div class="status" id="status" role="status">
+      <span class="dot"></span><span id="status-text">Réveil de la ruche…</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="col-main" aria-label="Images à analyser">
+      <!-- Zone de dépôt : un clic n'importe où ouvre le sélecteur de fichiers -->
+      <div class="dropzone" id="dropzone">
+        <div class="comb" aria-hidden="true"></div>
+        <div class="dz-inner">
+          <div class="dz-hex hex" aria-hidden="true"><svg class="bee dz-bee"><use href="#bee"/></svg></div>
+          <h2>Dépose tes images ici</h2>
+          <p>glisser-déposer · clic pour parcourir · <kbd>Ctrl</kbd>+<kbd>V</kbd> pour coller</p>
+          <div class="dz-actions">
+            <button class="btn btn-honey" id="btn-browse" type="button">Choisir des images</button>
+            <button class="btn btn-ghost" id="btn-cam" type="button">Prendre une photo</button>
+          </div>
+        </div>
+        <input type="file" id="file-input" accept="image/*" multiple hidden>
+      </div>
+
+      <!-- Webcam -->
+      <div class="cam" id="cam" hidden>
+        <video id="cam-video" autoplay playsinline muted></video>
+        <div class="cam-bar">
+          <button class="btn btn-honey" id="btn-snap" type="button">Capturer</button>
+          <button class="btn btn-ghost" id="btn-cam-close" type="button">Fermer</button>
+        </div>
+      </div>
+
+      <!-- Résultats -->
+      <div class="results-head" id="results-head" hidden>
+        <h2>Le butin</h2>
+        <div class="board" id="board" aria-label="Classement des modèles"></div>
+        <button class="btn btn-small btn-ghost" id="btn-clear" type="button">Vider la ruche</button>
+      </div>
+      <div class="results" id="results"></div>
+
+      <div class="empty" id="empty">
+        <svg class="bee empty-bee" aria-hidden="true"><use href="#bee"/></svg>
+        <p>Aucune image pour l'instant. Les abeilles s'impatientent.</p>
+      </div>
+    </section>
+
+    <aside class="col-side">
+      <div class="panel">
+        <h3><span class="hex-ico"></span>Les modèles de la ruche</h3>
+        <p class="hint">Chaque image passe dans tous les modèles activés.</p>
+        <div class="models" id="models"></div>
+      </div>
+
+      <div class="panel panel-quiet">
+        <h3><span class="hex-ico"></span>Comment le réseau voit l'image</h3>
+        <ol class="pipeline">
+          <li><b>Redimensionnement</b> à la taille d'entrée du modèle, 200×200 pixels pour les nôtres (bilinéaire, exactement comme TensorFlow à l'entraînement).</li>
+          <li><b>Normalisation</b> : chaque pixel est divisé par 255 pour être entre 0 et 1.</li>
+          <li><b>Convolutions 3×3</b> + LeakyReLU + MaxPooling : le réseau repère contours, textures et coups de pinceau, de plus en plus abstraits.</li>
+          <li><b>Couche dense</b> qui combine ces indices, puis <b>softmax</b> : une probabilité par classe, la plus haute l'emporte.</li>
+        </ol>
+        <p class="hint">Les poids sont exportés depuis Keras et vérifiés à la conversion : le site donne les mêmes résultats que le notebook. Détails des choix (architecture, perte, Adam…) dans le <code>README.md</code> du projet.</p>
+      </div>
+
+      <div class="panel panel-quiet">
+        <h3><span class="hex-ico"></span>Ajouter un modèle</h3>
+        <ol class="howto">
+          <li>Crée un dossier dans <code>modeles/</code> (par exemple <code>modeles/V3</code>).</li>
+          <li>Mets-y ton fichier <code>.keras</code> et, si tu veux, un <code>classes.txt</code> avec un nom de classe par ligne (dans l'ordre alphabétique des dossiers du dataset).</li>
+          <li>Double-clique sur <code>convertir_modeles.bat</code>.</li>
+          <li>Recharge cette page (F5).</li>
+        </ol>
+      </div>
+
+      <div class="panel panel-quiet">
+        <h3><span class="hex-ico"></span>Astuces</h3>
+        <p class="hint">Indique sous chaque image ce qu'elle est vraiment (« En vrai ») : chaque modèle gagne ou perd un point et sa précision s'affiche. Un modèle qui ne connaît pas la classe « Peinture » est jugé juste s'il répond « Autre ». « Vue du modèle » montre l'image telle que le réseau la reçoit.</p>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="foot">Fait pour butiner en local · Keras → JavaScript, sans serveur · Projet Leyenda · Isrâ Boudemagh, Théophile Noel, Bruno Rieckenberg, Corentin Romano</footer>
+
+  <!-- Modèle de carte, cloné par app.js pour chaque image -->
+  <template id="tpl-card">
+    <article class="card">
+      <div class="thumb">
+        <img alt="">
+        <canvas class="model-view" width="160" height="160" hidden></canvas>
+        <span class="mv-badge" hidden></span>
+        <div class="buzz"><svg class="bee"><use href="#bee"/></svg></div>
+      </div>
+      <div class="card-body">
+        <p class="fname"><span class="fname-text"></span><span class="res"></span></p>
+        <p class="consensus" hidden></p>
+        <ul class="preds"></ul>
+        <div class="truth"><span class="truth-label">En vrai :</span><div class="truth-opts"></div></div>
+        <div class="card-foot">
+          <button class="btn btn-small btn-ghost btn-view" type="button" aria-pressed="false">Vue du modèle</button>
+          <button class="btn btn-small btn-ghost btn-details" type="button" aria-pressed="false">Détails</button>
+        </div>
+        <div class="details" hidden></div>
+      </div>
+    </article>
+  </template>
+
+  <script src="engine.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
