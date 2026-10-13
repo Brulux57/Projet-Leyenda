@@ -1,0 +1,25 @@
+{
+  "dossier_modeles": "../models",
+  "L1_classification": {
+    "model_photo_autre": {
+      "fichier": "lucky_model2.keras",
+      "classes": ["Autre", "Photo"],
+      "description": "Livrable 1, 2 classes (Livrable1/L1.ipynb)"
+    },
+    "model_photo_autre_peinture": {
+      "fichier": "lucky_model1.1.keras",
+      "classes": ["Autre", "Peinture", "Photo"],
+      "description": "Livrable 1, 3 classes (Livrable1/L1,1.ipynb)"
+    }
+  },
+  "L2_debruitage": {
+    "cae_saut_v2": {
+      "fichier": "cae_saut_v2.keras",
+      "description": "Version 2 retenue : U-Net résiduel, patchs pleine résolution, bruit mixte (Livrable2/L2.ipynb)"
+    },
+    "cae_saut": {
+      "fichier": "cae_saut.keras",
+      "description": "Version 1 : auto-encodeur à connexions de saut, bruit gaussien seul (pour comparer)"
+    }
+  }
+}

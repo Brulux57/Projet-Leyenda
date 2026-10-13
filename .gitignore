@@ -1,6 +1,19 @@
-Projet/Livrable1/dataset
-Projet/Livrable1.1/dataset
-Projet/Livrable2/Livrable2
+# Données (trop lourdes pour Git)
+Livrable1/dataset/
+Livrable2/dataset/
+Livrable2/rejets/
+*_rejets/
+
+# Modèles entraînés (.keras, jusqu'à 250 Mo) : seuls leurs exports pour le site sont versionnés
+*.keras
+
+# Images produites par les notebooks
+Livrable2/sorties/
+
+# Environnements et caches
+.venv/
+__pycache__/
+.ipynb_checkpoints/
+
 WS
 Livrable2.zip
-*.keras

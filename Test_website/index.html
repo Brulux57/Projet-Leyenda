@@ -1,20 +1,30 @@
 <!doctype html>
 <!--
-  La Ruche : banc d'essai local des modèles « lucky model » (photo / peinture / autre)
+  La Ruche : banc d'essai local du Projet Leyenda
 
-  Page 100 % statique : on l'ouvre directement (double-clic sur index.html), sans serveur.
-  - engine.js : mini moteur d'inférence (refait en JavaScript les calculs du réseau Keras)
-  - app.js    : interface (chargement des modèles, dépôt d'images, affichage des résultats)
-  - modeles/  : modèles exportés par convertir_modeles.py (architecture + poids en .js)
-  Les poids sont des fichiers .js (et non .json) car un navigateur refuse de lire un .json
-  local avec fetch() depuis une page ouverte en file:// ; une balise <script> passe toujours.
+  Page statique : on l'ouvre directement (double-clic sur index.html), sans serveur.
+  Trois onglets, un par étape du projet :
+    1. Classification (livrable 1) : photo, peinture ou autre ?
+    2. Débruitage (livrable 2)     : image avant / après l'auto-encodeur, gain mesuré
+    3. Pipeline                     : un dossier passe par le livrable 1 puis le livrable 2
+
+  Code :
+    js/lib/tf.min.js   TensorFlow.js 4.22 (copie locale : le site marche hors ligne)
+    js/moteur.js       exécute les modèles exportés (carte graphique via WebGL)
+    js/outils.js       images, bruit, mesures PSNR / SSIM, ZIP, CSV
+    js/interface.js    zone de dépôt, comparateur avant / après, panneau des modèles
+    js/modeles.js      chargement de modeles/ (généré par convertir_modeles.py)
+    js/onglet_*.js     un fichier par onglet
+    js/app.js          onglets et démarrage
+  Les modèles sont des fichiers .js (et non .json) : un navigateur refuse de lire un .json
+  local avec fetch() depuis une page ouverte en file://, une balise <script> passe toujours.
 -->
 <html lang="fr">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>La Ruche · Lucky Model</title>
-  <meta name="description" content="Compare dans le navigateur les modèles de classification d'images photo / peinture / autre.">
+  <title>La Ruche · Projet Leyenda</title>
+  <meta name="description" content="Banc d'essai local du Projet Leyenda : classification photo / peinture / autre, débruitage d'images et pipeline complète, calculés dans le navigateur.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -56,97 +66,338 @@
     <div class="flyer f4"><svg class="bee"><use href="#bee"/></svg></div>
   </div>
 
-  <header class="hero">
-    <div class="hero-badge hex" aria-hidden="true"><svg class="bee bob"><use href="#bee"/></svg></div>
-    <div>
-      <p class="eyebrow">Banc d'essai local · <span id="model-count">comparateur de modèles</span></p>
-      <h1>La Ruche <span>à prédictions</span></h1>
-      <p class="lede">Dépose une image : elle passe dans chacun de nos réseaux de neurones, qui disent si c'est une <b>photo</b>, une <b>peinture</b> ou <b>autre chose</b>. Les verdicts s'affichent côte à côte. Tout tourne dans ton navigateur : aucune image ne quitte ton ordinateur.</p>
-    </div>
-    <div class="status" id="status" role="status">
-      <span class="dot"></span><span id="status-text">Réveil de la ruche…</span>
+  <!-- ======================= En-tête et onglets ======================= -->
+  <header class="top">
+    <div class="top-inner">
+      <a class="brand" href="#classification">
+        <span class="brand-badge hex" aria-hidden="true"><svg class="bee bob"><use href="#bee"/></svg></span>
+        <span class="brand-txt"><b>La Ruche</b><small>Projet Leyenda</small></span>
+      </a>
+      <nav class="tabs" role="tablist" aria-label="Étapes du projet">
+        <button class="tab" type="button" role="tab" id="tab-classification" aria-controls="vue-classification" data-onglet="classification">
+          <span class="tab-num">L1</span><span class="tab-txt">Classification</span>
+        </button>
+        <button class="tab" type="button" role="tab" id="tab-debruitage" aria-controls="vue-debruitage" data-onglet="debruitage">
+          <span class="tab-num">L2</span><span class="tab-txt">Débruitage</span>
+        </button>
+        <button class="tab" type="button" role="tab" id="tab-pipeline" aria-controls="vue-pipeline" data-onglet="pipeline">
+          <span class="tab-num tab-num-flux" aria-hidden="true"><svg viewBox="0 0 24 12"><path d="M1 6h7M10 6h7M16 2l5 4-5 4"/><circle cx="9" cy="6" r="1.6"/></svg></span><span class="tab-txt">Pipeline</span>
+        </button>
+      </nav>
+      <div class="status" id="status" role="status">
+        <span class="dot"></span><span id="status-text">Réveil de la ruche…</span>
+      </div>
     </div>
   </header>
 
-  <main class="layout">
-    <section class="col-main" aria-label="Images à analyser">
-      <!-- Zone de dépôt : un clic n'importe où ouvre le sélecteur de fichiers -->
-      <div class="dropzone" id="dropzone">
-        <div class="comb" aria-hidden="true"></div>
-        <div class="dz-inner">
-          <div class="dz-hex hex" aria-hidden="true"><svg class="bee dz-bee"><use href="#bee"/></svg></div>
-          <h2>Dépose tes images ici</h2>
-          <p>glisser-déposer · clic pour parcourir · <kbd>Ctrl</kbd>+<kbd>V</kbd> pour coller</p>
-          <div class="dz-actions">
-            <button class="btn btn-honey" id="btn-browse" type="button">Choisir des images</button>
-            <button class="btn btn-ghost" id="btn-cam" type="button">Prendre une photo</button>
+  <main>
+    <!-- ======================= Onglet 1 : classification ======================= -->
+    <section class="vue" id="vue-classification" role="tabpanel" aria-labelledby="tab-classification" hidden>
+      <div class="intro">
+        <p class="eyebrow">Livrable 1 · Classification</p>
+        <h1>Photo, peinture <span>ou autre ?</span></h1>
+        <p class="lede">Dépose une image : elle passe dans chacun des classifieurs activés, qui disent si c'est une <b>photo</b>, une <b>peinture</b> ou <b>autre chose</b>. Les verdicts s'affichent côte à côte. Tout tourne dans ton navigateur : aucune image ne quitte ton ordinateur.</p>
+      </div>
+
+      <div class="layout">
+        <section class="col-main" aria-label="Images à classer">
+          <div class="dropzone" id="l1-depot">
+            <div class="comb" aria-hidden="true"></div>
+            <div class="dz-inner">
+              <div class="dz-hex hex" aria-hidden="true"><svg class="bee dz-bee"><use href="#bee"/></svg></div>
+              <h2>Dépose tes images ici</h2>
+              <p>glisser-déposer · clic pour parcourir · <kbd>Ctrl</kbd>+<kbd>V</kbd> pour coller</p>
+              <div class="dz-actions">
+                <button class="btn btn-honey" id="l1-parcourir" type="button">Choisir des images</button>
+                <button class="btn btn-ghost" id="l1-webcam" type="button">Prendre une photo</button>
+              </div>
+            </div>
+            <input type="file" id="l1-fichiers" accept="image/*" multiple hidden>
           </div>
-        </div>
-        <input type="file" id="file-input" accept="image/*" multiple hidden>
-      </div>
 
-      <!-- Webcam -->
-      <div class="cam" id="cam" hidden>
-        <video id="cam-video" autoplay playsinline muted></video>
-        <div class="cam-bar">
-          <button class="btn btn-honey" id="btn-snap" type="button">Capturer</button>
-          <button class="btn btn-ghost" id="btn-cam-close" type="button">Fermer</button>
-        </div>
-      </div>
+          <div class="cam" id="l1-cam" hidden>
+            <video id="l1-cam-video" autoplay playsinline muted></video>
+            <div class="cam-bar">
+              <button class="btn btn-honey" id="l1-capturer" type="button">Capturer</button>
+              <button class="btn btn-ghost" id="l1-cam-fermer" type="button">Fermer</button>
+            </div>
+          </div>
 
-      <!-- Résultats -->
-      <div class="results-head" id="results-head" hidden>
-        <h2>Le butin</h2>
-        <div class="board" id="board" aria-label="Classement des modèles"></div>
-        <button class="btn btn-small btn-ghost" id="btn-clear" type="button">Vider la ruche</button>
-      </div>
-      <div class="results" id="results"></div>
+          <div class="results-head" id="l1-entete" hidden>
+            <h2>Le butin</h2>
+            <div class="board" id="l1-classement" aria-label="Classement des modèles"></div>
+            <button class="btn btn-small btn-ghost" id="l1-vider" type="button">Vider la ruche</button>
+          </div>
+          <div class="results" id="l1-resultats"></div>
 
-      <div class="empty" id="empty">
-        <svg class="bee empty-bee" aria-hidden="true"><use href="#bee"/></svg>
-        <p>Aucune image pour l'instant. Les abeilles s'impatientent.</p>
+          <div class="empty" id="l1-vide">
+            <svg class="bee empty-bee" aria-hidden="true"><use href="#bee"/></svg>
+            <p>Aucune image pour l'instant. Les abeilles s'impatientent.</p>
+          </div>
+        </section>
+
+        <aside class="col-side">
+          <div class="panel">
+            <h3><span class="hex-ico"></span>Les classifieurs</h3>
+            <p class="hint">Chaque image passe dans tous les modèles activés.</p>
+            <div class="models" id="l1-modeles"></div>
+          </div>
+
+          <div class="panel panel-quiet">
+            <h3><span class="hex-ico"></span>Comment le réseau voit l'image</h3>
+            <ol class="pipeline">
+              <li><b>Redimensionnement</b> à la taille d'entrée du modèle, 200×200 pixels pour les nôtres (bilinéaire, exactement comme TensorFlow à l'entraînement).</li>
+              <li><b>Normalisation</b> : chaque pixel est divisé par 255 pour être entre 0 et 1.</li>
+              <li><b>Convolutions 3×3</b> + LeakyReLU + MaxPooling : le réseau repère contours, textures et coups de pinceau, de plus en plus abstraits.</li>
+              <li><b>Couche dense</b> qui combine ces indices, puis <b>softmax</b> : une probabilité par classe, la plus haute l'emporte.</li>
+            </ol>
+            <p class="hint">Les poids sont exportés depuis Keras et vérifiés à la conversion : le site donne les mêmes résultats que le notebook. Détails des choix (architecture, perte, Adam…) dans le <code>README.md</code> du projet.</p>
+          </div>
+
+          <div class="panel panel-quiet">
+            <h3><span class="hex-ico"></span>Astuces</h3>
+            <p class="hint">Indique sous chaque image ce qu'elle est vraiment (« En vrai ») : chaque modèle gagne ou perd un point et sa précision s'affiche. Un modèle qui ne connaît pas la classe « Peinture » est jugé juste s'il répond « Autre ». « Vue du modèle » montre l'image telle que le réseau la reçoit.</p>
+          </div>
+
+          <div class="panel panel-quiet">
+            <h3><span class="hex-ico"></span>Ajouter un classifieur</h3>
+            <ol class="howto">
+              <li>Enregistre le modèle dans <code>models/</code> (le notebook le fait en fin d'entraînement).</li>
+              <li>Ajoute-le dans <code>Test_website/catalogue.json</code>, rubrique <code>L1_classification</code>, avec ses classes dans l'ordre alphabétique des dossiers du dataset.</li>
+              <li>Double-clique sur <code>convertir_modeles.bat</code>, puis recharge cette page (F5).</li>
+            </ol>
+          </div>
+        </aside>
       </div>
     </section>
 
-    <aside class="col-side">
-      <div class="panel">
-        <h3><span class="hex-ico"></span>Les modèles de la ruche</h3>
-        <p class="hint">Chaque image passe dans tous les modèles activés.</p>
-        <div class="models" id="models"></div>
+    <!-- ======================= Onglet 2 : débruitage ======================= -->
+    <section class="vue" id="vue-debruitage" role="tabpanel" aria-labelledby="tab-debruitage" hidden>
+      <div class="intro">
+        <p class="eyebrow">Livrable 2 · Débruitage</p>
+        <h1>Avant / après <span>le débruiteur</span></h1>
+        <p class="lede">Dépose des photos : chacune passe dans les auto-encodeurs activés. Fais glisser le curseur sur l'image pour comparer avant et après, et lis le <b>gain</b> : de combien de décibels le PSNR monte une fois le bruit retiré.</p>
       </div>
 
-      <div class="panel panel-quiet">
-        <h3><span class="hex-ico"></span>Comment le réseau voit l'image</h3>
-        <ol class="pipeline">
-          <li><b>Redimensionnement</b> à la taille d'entrée du modèle, 200×200 pixels pour les nôtres (bilinéaire, exactement comme TensorFlow à l'entraînement).</li>
-          <li><b>Normalisation</b> : chaque pixel est divisé par 255 pour être entre 0 et 1.</li>
-          <li><b>Convolutions 3×3</b> + LeakyReLU + MaxPooling : le réseau repère contours, textures et coups de pinceau, de plus en plus abstraits.</li>
-          <li><b>Couche dense</b> qui combine ces indices, puis <b>softmax</b> : une probabilité par classe, la plus haute l'emporte.</li>
-        </ol>
-        <p class="hint">Les poids sont exportés depuis Keras et vérifiés à la conversion : le site donne les mêmes résultats que le notebook. Détails des choix (architecture, perte, Adam…) dans le <code>README.md</code> du projet.</p>
+      <div class="layout">
+        <section class="col-main" aria-label="Images à débruiter">
+          <div class="reglages panel">
+            <div class="champ">
+              <span class="champ-titre">Image déposée</span>
+              <div class="seg" id="l2-mode" role="group" aria-label="Type d'image déposée">
+                <button type="button" data-mode="simule" aria-pressed="true">Propre : ajouter un bruit de test</button>
+                <button type="button" data-mode="reel" aria-pressed="false">Déjà bruitée</button>
+              </div>
+            </div>
+            <div class="champ" id="l2-sigma-champ">
+              <label class="champ-titre" for="l2-sigma">Niveau de bruit σ</label>
+              <div class="range-ligne"><input type="range" id="l2-sigma" min="0.05" max="0.3" step="0.01" value="0.15"><output id="l2-sigma-val" for="l2-sigma"></output></div>
+            </div>
+            <div class="champ">
+              <label class="champ-titre" for="l2-taille">Taille de traitement</label>
+              <select id="l2-taille">
+                <option value="512">512 px (grand côté)</option>
+                <option value="1024">1024 px (comme le notebook)</option>
+                <option value="2048">2048 px</option>
+                <option value="0">taille d'origine</option>
+              </select>
+            </div>
+            <p class="hint champ-large" id="l2-aide-mode"></p>
+          </div>
+
+          <div class="dropzone" id="l2-depot">
+            <div class="comb" aria-hidden="true"></div>
+            <div class="dz-inner">
+              <div class="dz-hex hex" aria-hidden="true"><svg class="bee dz-bee"><use href="#bee"/></svg></div>
+              <h2>Dépose tes photos ici</h2>
+              <p>glisser-déposer (images ou dossier) · clic pour parcourir · <kbd>Ctrl</kbd>+<kbd>V</kbd> pour coller</p>
+              <div class="dz-actions">
+                <button class="btn btn-honey" id="l2-parcourir" type="button">Choisir des images</button>
+                <button class="btn btn-ghost" id="l2-webcam" type="button">Prendre une photo</button>
+              </div>
+            </div>
+            <input type="file" id="l2-fichiers" accept="image/*" multiple hidden>
+          </div>
+
+          <div class="cam" id="l2-cam" hidden>
+            <video id="l2-cam-video" autoplay playsinline muted></video>
+            <div class="cam-bar">
+              <button class="btn btn-honey" id="l2-capturer" type="button">Capturer</button>
+              <button class="btn btn-ghost" id="l2-cam-fermer" type="button">Fermer</button>
+            </div>
+          </div>
+
+          <div class="results-head" id="l2-entete" hidden>
+            <h2>Le miel filtré</h2>
+            <div class="board" id="l2-classement" aria-label="Gain moyen de chaque débruiteur"></div>
+            <button class="btn btn-small btn-ghost" id="l2-vider" type="button">Vider la ruche</button>
+          </div>
+          <div class="results results-large" id="l2-resultats"></div>
+
+          <div class="empty" id="l2-vide">
+            <svg class="bee empty-bee" aria-hidden="true"><use href="#bee"/></svg>
+            <p>Aucune photo pour l'instant. Essaie une photo nette : le site lui ajoute du bruit, puis le retire.</p>
+          </div>
+        </section>
+
+        <aside class="col-side">
+          <div class="panel">
+            <h3><span class="hex-ico"></span>Les débruiteurs</h3>
+            <p class="hint">Chaque photo passe dans tous les modèles activés ; clique sur un nom sous l'image pour l'afficher.</p>
+            <div class="models" id="l2-modeles"></div>
+          </div>
+
+          <div class="panel panel-quiet">
+            <h3><span class="hex-ico"></span>Comment l'image est traitée</h3>
+            <ol class="pipeline">
+              <li><b>Réduction</b> si besoin : le grand côté est ramené à la taille de traitement (le réseau, entièrement convolutif, accepte toutes les tailles).</li>
+              <li><b>Normalisation</b> : pixels divisés par 255, entre 0 et 1.</li>
+              <li><b>Bords complétés par symétrie</b> jusqu'à un multiple de 8 (trois MaxPooling 2×2), puis rognés à la sortie.</li>
+              <li><b>Auto-encodeur</b> (U-Net résiduel) : l'encodeur réduit l'image jusqu'à 1/8 de sa taille, le décodeur la reconstruit avec les détails transmis par les connexions de saut, et le réseau ajoute à l'image la correction qu'il a apprise.</li>
+              <li><b>Par tuiles</b> sur les grandes images : des carrés qui se chevauchent d'une marge plus large que le champ de vision du réseau, dont on garde le centre. Le résultat est identique au calcul d'un bloc, et aucun tenseur ne devient assez gros pour fausser la carte graphique.</li>
+            </ol>
+          </div>
+
+          <div class="panel panel-quiet">
+            <h3><span class="hex-ico"></span>Lire le gain</h3>
+            <p class="hint"><b>PSNR</b> = 10 log<sub>10</sub>(1 / MSE) entre une image et l'originale propre, en dB : plus haut = plus proche. Le <b>gain</b> est le PSNR de l'image débruitée moins celui de l'image bruitée : +3 dB divise l'erreur par deux. Le <b>SSIM</b> (entre 0 et 1) juge la conservation des contours et des textures.</p>
+            <p class="hint">Ces mesures ont besoin de l'image propre : c'est pourquoi le mode par défaut ajoute lui-même le bruit, comme le notebook. Sur une image déjà bruitée, le site affiche seulement le <b>bruit estimé</b> (méthode d'Immerkær) : il baisse aussi quand des détails fins sont lissés, c'est donc un indice, pas une mesure.</p>
+          </div>
+
+          <div class="panel panel-quiet">
+            <h3><span class="hex-ico"></span>Ajouter un débruiteur</h3>
+            <ol class="howto">
+              <li>Enregistre le modèle dans <code>models/</code> (le notebook L2 le fait en fin d'entraînement).</li>
+              <li>Ajoute-le dans <code>Test_website/catalogue.json</code>, rubrique <code>L2_debruitage</code>.</li>
+              <li>Double-clique sur <code>convertir_modeles.bat</code>, puis recharge cette page (F5).</li>
+            </ol>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ======================= Onglet 3 : pipeline ======================= -->
+    <section class="vue" id="vue-pipeline" role="tabpanel" aria-labelledby="tab-pipeline" hidden>
+      <div class="intro">
+        <p class="eyebrow">Pipeline · livrable 1 puis livrable 2</p>
+        <h1>Du dossier brut <span>aux photos propres</span></h1>
+        <p class="lede">Choisis un dossier d'images numérisées : le classifieur ne garde que les <b>photos</b>, le débruiteur les nettoie une par une. Tu récupères les photos débruitées et un rapport, prêtes pour le captioning du livrable 3.</p>
       </div>
 
-      <div class="panel panel-quiet">
-        <h3><span class="hex-ico"></span>Ajouter un modèle</h3>
-        <ol class="howto">
-          <li>Crée un dossier dans <code>modeles/</code> (par exemple <code>modeles/V3</code>).</li>
-          <li>Mets-y ton fichier <code>.keras</code> et, si tu veux, un <code>classes.txt</code> avec un nom de classe par ligne (dans l'ordre alphabétique des dossiers du dataset).</li>
-          <li>Double-clique sur <code>convertir_modeles.bat</code>.</li>
-          <li>Recharge cette page (F5).</li>
-        </ol>
+      <div class="pl-haut">
+        <div class="dropzone pl-source" id="pl-source">
+          <div class="comb" aria-hidden="true"></div>
+          <div class="dz-inner">
+            <h2>Source</h2>
+            <p id="pl-source-info">Aucun dossier choisi</p>
+            <div class="dz-actions">
+              <button class="btn btn-honey" id="pl-btn-dossier" type="button">Choisir un dossier</button>
+              <button class="btn btn-ghost" id="pl-btn-images" type="button">ou des images</button>
+            </div>
+            <p class="dz-note">sous-dossiers compris · tu peux aussi y glisser un dossier</p>
+          </div>
+          <input type="file" id="pl-input-dossier" webkitdirectory multiple hidden>
+          <input type="file" id="pl-input-images" accept="image/*" multiple hidden>
+        </div>
+
+        <div class="panel pl-reglages">
+          <div class="pl-col">
+            <h3><span class="etape-num">1</span>Classification</h3>
+            <label class="champ"><span class="champ-titre">Classifieur</span><select id="pl-classifieur"></select></label>
+            <label class="champ"><span class="champ-titre">Garder si P(Photo) ≥</span>
+              <select id="pl-seuil">
+                <option value="0.5">50 % (comme le notebook)</option>
+                <option value="0.7">70 %</option>
+                <option value="0.9">90 %</option>
+              </select>
+            </label>
+          </div>
+          <div class="pl-col">
+            <h3><span class="etape-num">2</span>Débruitage</h3>
+            <label class="champ"><span class="champ-titre">Débruiteur</span><select id="pl-debruiteur"></select></label>
+            <label class="champ"><span class="champ-titre">Taille de traitement</span>
+              <select id="pl-taille">
+                <option value="512">512 px (grand côté)</option>
+                <option value="1024" selected>1024 px (comme le notebook)</option>
+                <option value="2048">2048 px</option>
+                <option value="0">taille d'origine</option>
+              </select>
+            </label>
+          </div>
+          <div class="pl-col pl-col-large">
+            <label class="check"><input type="checkbox" id="pl-simuler"> <span><b>Simuler un lot bruité</b> : ajoute un bruit gaussien aux images avant l'étape 1 et mesure le vrai gain (comme la démonstration du notebook)</span></label>
+            <div class="champ" id="pl-sigma-champ" hidden>
+              <label class="champ-titre" for="pl-sigma">Niveau de bruit σ</label>
+              <div class="range-ligne"><input type="range" id="pl-sigma" min="0.05" max="0.3" step="0.01" value="0.15"><output id="pl-sigma-val" for="pl-sigma"></output></div>
+            </div>
+          </div>
+          <div class="pl-actions">
+            <button class="btn btn-honey" id="pl-lancer" type="button" disabled>Lancer la pipeline</button>
+            <button class="btn btn-ghost" id="pl-arreter" type="button" hidden>Arrêter</button>
+            <button class="btn btn-ghost btn-small" id="pl-vider" type="button">Vider</button>
+            <span class="hint" id="pl-attente">Les modèles se chargent…</span>
+          </div>
+        </div>
       </div>
 
-      <div class="panel panel-quiet">
-        <h3><span class="hex-ico"></span>Astuces</h3>
-        <p class="hint">Indique sous chaque image ce qu'elle est vraiment (« En vrai ») : chaque modèle gagne ou perd un point et sa précision s'affiche. Un modèle qui ne connaît pas la classe « Peinture » est jugé juste s'il répond « Autre ». « Vue du modèle » montre l'image telle que le réseau la reçoit.</p>
-      </div>
-    </aside>
+      <ol class="flux" aria-label="Étapes de la pipeline">
+        <li><span class="flux-titre">Dossier</span><span class="flux-val" id="pl-flux-source">0 image</span></li>
+        <li><span class="flux-titre"><span class="etape-num">1</span>Classification</span><span class="flux-val" id="pl-flux-1">photos gardées</span></li>
+        <li><span class="flux-titre"><span class="etape-num">2</span>Débruitage</span><span class="flux-val" id="pl-flux-2">photos débruitées</span></li>
+        <li class="flux-futur"><span class="flux-titre"><span class="etape-num">3</span>Captioning</span><span class="flux-val">livrable 3, à venir</span></li>
+      </ol>
+
+      <section class="etape" id="pl-etape1" hidden>
+        <div class="etape-head">
+          <h2><span class="etape-num">1</span>Classification : on garde les photos</h2>
+          <p class="etape-etat"></p>
+          <div class="progress" aria-hidden="true"><span></span></div>
+          <div class="chips" id="pl-resume1"></div>
+          <p class="hint" id="pl-note1" hidden>Lot bruité : le classifieur a été entraîné sur des images propres et le grain du bruit lui fait souvent prendre une photo pour une peinture. C'est l'étude de cas (b) du notebook L2 ; une piste est de débruiter avant de classer, ou de ré-entraîner le classifieur sur des images bruitées.</p>
+        </div>
+        <div class="pl-grille" id="pl-grille1"></div>
+      </section>
+
+      <section class="etape" id="pl-etape2" hidden>
+        <div class="etape-head">
+          <h2><span class="etape-num">2</span>Débruitage des photos gardées</h2>
+          <p class="etape-etat"></p>
+          <div class="progress" aria-hidden="true"><span></span></div>
+          <div class="chips" id="pl-resume2"></div>
+        </div>
+        <div class="results results-large" id="pl-grille2"></div>
+      </section>
+
+      <section class="etape etape-futur" id="pl-etape3" hidden>
+        <div class="etape-head">
+          <h2><span class="etape-num">3</span>Captioning (livrable 3, à venir)</h2>
+          <p class="etape-etat">Les photos débruitées seront décrites par une phrase générée par le réseau de captioning. Elles sont prêtes : télécharge-les ci-dessous.</p>
+        </div>
+      </section>
+
+      <section class="etape bilan" id="pl-bilan" hidden>
+        <div class="etape-head">
+          <h2>Bilan</h2>
+          <p class="etape-etat" id="pl-bilan-texte"></p>
+          <div class="dz-actions bilan-actions">
+            <button class="btn btn-honey" id="pl-zip" type="button">Photos débruitées + rapport (.zip)</button>
+            <button class="btn btn-ghost" id="pl-csv" type="button">Rapport seul (.csv)</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="pl-tableau">
+            <thead><tr><th>Image</th><th>Classe prédite</th><th class="num">P(Photo)</th><th>Étape 2</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
   </main>
 
-  <footer class="foot">Fait pour butiner en local · Keras → JavaScript, sans serveur · Projet Leyenda · Isrâ Boudemagh, Théophile Noel, Bruno Rieckenberg, Corentin Romano</footer>
+  <footer class="foot">Fait pour butiner en local · Keras → TensorFlow.js, sans serveur · Projet Leyenda · Isrâ Boudemagh, Théophile Noel, Bruno Rieckenberg, Corentin Romano</footer>
 
-  <!-- Modèle de carte, cloné par app.js pour chaque image -->
-  <template id="tpl-card">
+  <!-- Carte de l'onglet 1, clonée pour chaque image -->
+  <template id="tpl-l1-carte">
     <article class="card">
       <div class="thumb">
         <img alt="">
@@ -168,7 +419,33 @@
     </article>
   </template>
 
-  <script src="engine.js"></script>
-  <script src="app.js"></script>
+  <!-- Carte de l'onglet 2, clonée pour chaque image (le comparateur est ajouté par le code) -->
+  <template id="tpl-l2-carte">
+    <article class="card dcard">
+      <div class="dthumb">
+        <div class="buzz"><svg class="bee"><use href="#bee"/></svg></div>
+      </div>
+      <div class="card-body">
+        <p class="fname"><span class="fname-text"></span><span class="res"></span></p>
+        <div class="dgain" hidden></div>
+        <ul class="dlist"></ul>
+        <div class="card-foot">
+          <button class="btn btn-small btn-ghost btn-originale" type="button" aria-pressed="false" hidden>Voir l'originale</button>
+          <button class="btn btn-small btn-ghost btn-agrandir" type="button" aria-pressed="false">Agrandir</button>
+          <button class="btn btn-small btn-ghost btn-png" type="button" disabled>Télécharger (PNG)</button>
+        </div>
+      </div>
+    </article>
+  </template>
+
+  <script src="js/lib/tf.min.js"></script>
+  <script src="js/moteur.js"></script>
+  <script src="js/outils.js"></script>
+  <script src="js/modeles.js"></script>
+  <script src="js/interface.js"></script>
+  <script src="js/onglet_classification.js"></script>
+  <script src="js/onglet_debruitage.js"></script>
+  <script src="js/onglet_pipeline.js"></script>
+  <script src="js/app.js"></script>
 </body>
 </html>

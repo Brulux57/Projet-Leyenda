@@ -1,0 +1,11 @@
+# Notebooks des livrables (entraînement sur GPU : TensorFlow sous WSL2 ou Linux)
+tensorflow>=2.16        # inclut Keras 3
+numpy
+pandas
+matplotlib
+pillow
+scipy
+jupyterlab
+
+# Le site de test n'a besoin de rien : il s'ouvre dans le navigateur.
+# convertir_modeles.py n'a besoin que de keras et numpy (avec TensorFlow, PyTorch ou JAX comme backend).
