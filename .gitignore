@@ -17,3 +17,15 @@ __pycache__/
 
 WS
 Livrable2.zip
+
+# Livrable 3 : données COCO, caractéristiques d'images pré-calculées, poids des modèles (BLIP : 900 Mo)
+Livrable3/dataset/
+Livrable3/annotations/
+Livrable3/train2014/
+Livrable3/cache_features/
+models/blip-captioning-base/
+*.weights.h5
+*.safetensors
+
+# Journal de installer_environnement.sh
+installation.log

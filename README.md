@@ -1,11 +1,11 @@
 # Projet Leyenda
 
-Chaîne de traitement d'images numérisées pour TouNum, en TensorFlow / Keras, et un site web local pour la tester
-dans le navigateur.
+Chaîne de traitement d'images numérisées pour TouNum, en TensorFlow / Keras (livrables 1 et 2) et PyTorch (BLIP,
+livrable 3), et un site web local pour la tester.
 
 ```
  images numérisées ──► [ L2 : débruitage ] ──► [ L1 : photo, peinture ou autre ? ] ──► [ L3 : captioning ]
-                        toutes les images         on ne garde que les photos              (à venir)
+                        toutes les images         on ne garde que les photos              une phrase par photo (BLIP)
 ```
 
 D'après l'étude du livrable 2, le débruitage doit passer **avant** la classification : le classifieur du livrable 1
@@ -23,14 +23,22 @@ projet/
 │   ├── dataset/          images du livrable 2 (non versionné)
 │   ├── images_bruitees/  trois images réellement bruitées, pour l'essai final du notebook
 │   └── sorties/          images produites par les démonstrations du notebook (non versionné)
-├── models/               TOUS les modèles entraînés (.keras, non versionnés) et leurs historiques (.csv)
+├── Livrable3/            captioning : L3_1_modele_workshops.ipynb, puis L3_2_BLIP.ipynb
+│   ├── annotations/      MS COCO 2014 : légendes et objets de train2014 (non versionné ; images : voir le livrable 3)
+│   └── cache_features/   caractéristiques d'images EfficientNetB0 pré-calculées (non versionné)
+├── models/               TOUS les modèles (non versionnés) et leurs historiques (.csv)
+│   └── blip-captioning-base/   BLIP retenu pour le livrable 3 (save_pretrained, 900 Mo)
 ├── Test_photos/          12 images de test choisies à la main, jamais vues à l'entraînement
-├── Test_website/         site de test (index.html) et modèles exportés pour le navigateur
+├── Test_website/         site de test et son serveur local
+│   ├── serveur.py        serveur local : sert le site et calcule les modèles (TensorFlow, PyTorch)
+│   ├── lancer_serveur.bat / .sh
 │   ├── catalogue.json    modèles de models/ affichés par le site
-│   ├── convertir_modeles.py / .bat
+│   ├── convertir_modeles.py / .bat   exports pour le mode navigateur (sans serveur)
 │   ├── js/               code du site (un fichier par onglet) et TensorFlow.js
 │   └── modeles/          exports générés : L1_classification/, L2_debruitage/
 ├── docs/                 figures de ce README
+├── installer_environnement.sh / .bat   installe l'environnement Python (WSL / Linux, carte NVIDIA)
+├── leyenda_cuda.py       copié dans l'environnement par le script : permet à TensorFlow de trouver cuSOLVER
 └── requirements.txt
 ```
 
@@ -46,15 +54,52 @@ modèles enregistrés.
 | L1 classification, 2 classes | `Livrable1/L1.ipynb` | `Livrable1/dataset/<Classe>/` | `lucky_model2.keras` |
 | L1 classification, 3 classes | `Livrable1/L1,1.ipynb` | `Livrable1/dataset/<Classe>/` | `lucky_model1.1.keras` |
 | L2 débruitage | `Livrable2/L2.ipynb` | `Livrable2/dataset/` | `cae_saut_v2.keras` (+ `_historique.csv`) |
+| L3 captioning, partie 1 : modèle des workshops | `Livrable3/L3_1_modele_workshops.ipynb` | MS COCO 2014 : `Livrable3/annotations/` et images `train2014/` | `l3_attention_*` (modèle abandonné, et ses résultats pour la partie 2) |
+| L3 captioning, partie 2 : BLIP | `Livrable3/L3_2_BLIP.ipynb` (après la partie 1) | MS COCO 2014, mêmes images de test | `blip-captioning-base/` (retenu) |
 
-```bash
-pip install -r requirements.txt
-jupyter lab                    # ouvrir le notebook voulu
-```
+Tous les notebooks (L1, L2, L3) se lancent avec le noyau **« Leyenda (TensorFlow + PyTorch GPU) »** (voir
+[Environnement Python](#environnement-python)).
 
 Dans `L2.ipynb`, `L2_RETRAIN=0` recharge le modèle déjà enregistré au lieu de ré-entraîner, et la dernière
-cellule de la partie 12 publie le modèle sur le site (voir plus bas). L'entraînement complet est fait pour une
+cellule de la partie 12 publie le modèle sur le site (voir plus bas). De même, `L3_RETRAIN=0` recharge le modèle à
+attention du livrable 3 au lieu de le ré-entraîner. L'entraînement complet est fait pour une
 carte graphique (14,5 minutes avec WSL + TensorFlow GPU) ; sur processeur seul, réduire `L2_EPOCHS` ou `L2_PAS`.
+
+### Environnement Python
+
+Double-clic sur **`installer_environnement.bat`** (Windows : lance le script dans WSL), ou sous WSL / Linux :
+
+```bash
+bash installer_environnement.sh                      # crée ~/venvs/leyenda ; environ 5 Go à télécharger la première fois
+bash installer_environnement.sh --supprimer-ancien   # idem, puis supprime l'ancien ~/venvs/tf-gpu (le .bat le propose)
+```
+
+Le script installe `requirements.txt` dans `~/venvs/leyenda` et enregistre le noyau Jupyter **« Leyenda (TensorFlow +
+PyTorch GPU) »**, à choisir dans VS Code (*Select Kernel > Jupyter Kernel...*) ou dans Jupyter, pour **tous** les
+notebooks du projet. Il vérifie ensuite que TensorFlow puis PyTorch calculent sur la carte graphique dans un même
+processus. Tout ce qu'il affiche est recopié dans `installation.log`. L'ancien environnement `~/venvs/tf-gpu` n'est
+plus utilisé par aucun notebook ni par le site : `--supprimer-ancien` le supprime, avec son noyau Jupyter, une fois le
+nouvel environnement vérifié.
+
+TensorFlow et PyTorch partagent les mêmes bibliothèques CUDA dans l'environnement : ils doivent utiliser la **même
+version majeure de CUDA**. TensorFlow 2.21 est compilé pour CUDA 12 ; `requirements.txt` prend donc PyTorch 2.13 dans
+sa version CUDA 12.9, qui gère aussi les RTX 50xx (un PyTorch pour CUDA 13, `+cu130`, installe ses bibliothèques
+CUDA 13 dans les mêmes dossiers `nvidia/` que celles de TensorFlow). Ils ne tournent en revanche jamais dans le même
+processus : le livrable 3 est découpé en deux notebooks, et le serveur du site fait tourner BLIP dans un processus à
+part (ensemble, ils arrêtaient le noyau ou le serveur sans message au chargement de BLIP).
+
+TensorFlow 2.21 charge seul les bibliothèques `nvidia-*-cu12` de l'environnement, **sauf `libcusolver.so.11`** : il
+affiche alors « Cannot dlopen some GPU libraries » et calcule tout sur le processeur. Le script copie donc dans
+l'environnement **`leyenda_cuda.py`**, chargé au démarrage de Python (fichier `leyenda_cuda.pth`) : au premier
+`import tensorflow`, il charge cuSOLVER juste avant, et TensorFlow la trouve déjà chargée. Cela vaut pour tous les
+notebooks et scripts, quelle que soit la façon dont ils sont lancés ; un programme qui n'importe pas TensorFlow ne
+charge rien.
+
+Sur une RTX 50xx, TensorFlow 2.21 n'a pas de code machine prêt pour la carte : il compile ses calculs au premier
+lancement (plusieurs minutes, une seule fois grâce au cache `CUDA_CACHE_MAXSIZE` de 4 Go réglé par le noyau et le
+lanceur du site).
+
+Sans le script : `pip install -r requirements.txt` dans un environnement virtuel, puis `jupyter lab`.
 
 ## Livrable 1 : classification
 
@@ -325,7 +370,7 @@ pas (26,7 %) : il faut un débruitage qui garde les contours et les couleurs sur
 
 ```
  images numérisées ──► [ L2 : débruitage ] ──► [ L1 : photo, peinture ou autre ? ] ──► [ L3 : captioning ]
-                        toutes les images         on ne garde que les photos              (à venir)
+                        toutes les images         on ne garde que les photos              une phrase par photo (BLIP)
 ```
 
 * **Coût** : toutes les images passent par le débruiteur, pas seulement les photos ; le temps de calcul augmente
@@ -335,34 +380,187 @@ pas (26,7 %) : il faut un débruitage qui garde les contours et les couleurs sur
 * **Complément possible** : ré-entraîner le classifieur du livrable 1 avec du bruit dans son augmentation, pour
   qu'il soit robuste même sans débruitage.
 
+## Livrable 3 : captioning (légende automatique)
+
+Le livrable 3 part des deux workshops (**Transfer Learning** puis **Annotation d'images**), reconstruit leur modèle
+jusqu'au bout, montre qu'**il ne fonctionne pas correctement**, et le remplace par **BLIP** (Salesforce), enregistré
+dans `models/blip-captioning-base` : c'est lui qu'utilisent l'onglet L3 du site et l'étape 3 de la pipeline. Il tient
+en deux notebooks, à lancer dans cet ordre, chacun dans son propre noyau :
+
+| Notebook | Contenu | Bibliothèque |
+|---|---|---|
+| `Livrable3/L3_1_modele_workshops.ipynb` | parties 1 à 7 : données, transfer learning, modèle CNN + attention + GRU, entraînement, évaluation, diagnostic. Enregistre le modèle (`models/l3_attention_*`) et ses légendes et scores (`models/l3_attention_resultats.json`) | TensorFlow / Keras |
+| `Livrable3/L3_2_BLIP.ipynb` | parties 8 à 10 : fonctionnement de BLIP, comparaison avec le modèle 1 sur les mêmes images (relues dans le fichier de résultats), conclusion, enregistrement de BLIP | PyTorch / Transformers |
+
+Séparer les deux modèles évite de charger TensorFlow et PyTorch dans un même noyau : chacun garde pour lui la mémoire
+vive et la carte graphique, et un notebook se relance sans l'autre. Sous WSL, `L3_2_BLIP.ipynb` (comme le serveur du
+site) copie une fois BLIP dans `~/.cache/leyenda/` avant de le charger : lire ses 854 Mo de poids directement sur un
+disque Windows (`/mnt/d/...`) est très lent et peut arrêter le noyau.
+
+### Démarche
+
+1. **Données** : MS COCO 2014, les 3 611 images de `train2014` téléchargées pour le workshop (18 065 légendes, 5 par
+   image). Les annotations sont celles du projet, dans `Livrable3/annotations/` ; les images sont lues dans
+   `Livrable3/train2014/` s'il existe, sinon dans le dossier du workshop (`../../workshop/train2014/`). Découpage **par image** 80 / 10 / 10 % (entraînement / validation / test, graine 42), vocabulaire des 5 000
+   mots les plus fréquents, légendes de 20 mots au plus (99,3 % d'entre elles).
+2. **Transfer learning** : EfficientNetB0 pré-entraîné sur ImageNet, gelé, résume chaque image en 7 × 7 = 49 régions
+   de 1280 valeurs (calculées une fois, mises en cache). Ces caractéristiques ont du sens : une simple régression
+   logistique reconnaît la super-catégorie du plus grand objet dans **82 %** des cas (35 % en répondant toujours la
+   plus fréquente), et le t-SNE regroupe les images par contenu.
+3. **Modèle 1, celui des workshops** : encodeur dense, **attention de Bahdanau** sur les 49 régions, **décodeur GRU**
+   de 512 unités (6,4 M paramètres entraînés), teacher forcing, entropie croisée masquée, Adam 3·10⁻⁴, early stopping
+   sur la validation. Enregistré dans `models/l3_attention_*` (poids, vocabulaire, historique, et dans
+   `l3_attention_resultats.json` ses légendes et scores, relus par `L3_2_BLIP.ipynb`).
+4. **Évaluation** : BLEU-1 à BLEU-4 contre les 5 légendes de référence, diversité (légendes distinctes, mots
+   employés, phrases recopiées), carte d'attention, et les 12 images de `Test_photos/`, jamais vues.
+5. **BLIP** (`L3_2_BLIP.ipynb`) : chargé depuis `models/blip-captioning-base` (ou le hub Hugging Face), évalué sur
+   les mêmes images, puis enregistré par `save_pretrained`.
+
+![t-SNE des caractéristiques EfficientNetB0](docs/l3_tsne_efficientnet.png)
+
+Le t-SNE des caractéristiques d'EfficientNetB0 (moyenne des 49 régions de chaque image), coloré par la super-catégorie
+du plus grand objet : les images se regroupent par contenu sans que le CNN ait jamais vu COCO. La partie « vision » du
+modèle 1 fonctionne ; c'est la partie « langage », apprise de zéro, qui échoue.
+
+![Courbes d'entraînement du modèle 1](docs/l3_courbes_modele1.png)
+
+La perte de validation ne baisse plus après la **5e époque** alors que celle d'entraînement continue : le modèle
+apprend par cœur ses 14 348 légendes (sur-apprentissage), l'early stopping garde l'époque 5.
+
+### Résultats
+
+| | Modèle 1 : CNN + attention + GRU | **BLIP (retenu)** |
+|---|---|---|
+| Paramètres | 6,4 M entraînés (+ 4 M gelés) | 224 M pré-entraînés, aucun entraînement |
+| BLEU-4, 362 images de test COCO | 0,209 | **0,282** |
+| BLEU-1 | **0,625** | 0,564 (légendes plus courtes, pénalisées par BLEU) |
+| Mots différents employés | 241 | **351** |
+| Images de `Test_photos/` correctement décrites | **0 sur 12** (4 en partie) | **9 sur 12** (3 en partie) |
+
+![BLEU et diversité : humain, modèle 1, BLIP](docs/l3_comparaison.png)
+
+Sur le jeu de test COCO, le modèle 1 égale presque une légende humaine en BLEU-1 et en BLEU-4 ; BLIP fait nettement
+mieux en BLEU-4. Les mêmes images montrent pourtant que les phrases du modèle 1 sont souvent fausses :
+
+![Modèle 1 et BLIP sur les mêmes images de test COCO](docs/l3_exemples_coco.jpg)
+
+Et sur les images du projet, que ni l'un ni l'autre n'a vues :
+
+![Comparaison sur les images du projet](docs/l3_test_photos.jpg)
+
+### Pourquoi le modèle des workshops ne fonctionne pas
+
+* **Score BLEU trompeur** : son BLEU-4 sur COCO (0,209) égale celui d'une légende humaine (0,202), parce que les
+  tournures stéréotypées de COCO rapportent des points même quand la phrase est fausse (« a group of people are
+  parked in the air » pour des passagers qui descendent d'un avion).
+* **Phrases toutes faites** : « a group of people sitting on a table » pour 16 images de test sur 362, 241 mots
+  employés en tout.
+* **Sur-apprentissage** : BLEU-4 de 0,290 sur des images d'entraînement contre 0,186 sur le test (glouton).
+* **Attention presque immobile** : la même zone est regardée pour tous les mots.
+* **Hors de COCO, rien de juste** : la Joconde devient « a woman in front of a luggage in the back », la Terre « a
+  small white box with a toilet on it ». Or la pipeline traite justement des images numérisées très variées.
+
+Les causes : trop peu de données pour **apprendre une langue de zéro** (14 000 phrases pour 6,4 M de paramètres ;
+seule la vision profite du transfer learning), le biais d'exposition du teacher forcing, une image réduite à 49 régions
+par un CNN gelé, et le domaine de COCO (photos du quotidien). Même sur COCO complet, cette architecture plafonne vers
+un BLEU-4 de 0,24-0,25 (*Show, Attend and Tell*, 2015).
+
+### BLIP
+
+**BLIP** (*Bootstrapping Language-Image Pre-training*, Li et al., 2022) pousse le transfer learning jusqu'au bout : la
+vision **et** la langue sont pré-entraînées, sur des millions de couples image-texte.
+
+* **Encodeur d'image ViT-B/16** : l'image 384 × 384 est découpée en 576 carrés de 16 × 16 pixels, transformés par 12
+  couches d'auto-attention (86 M paramètres).
+* **Décodeur de texte de type BERT** (12 couches, 138 M paramètres) : auto-attention causale sur les mots déjà écrits,
+  **attention croisée** vers les 577 vecteurs de l'image à chaque couche, vocabulaire WordPiece de 30 524 sous-mots.
+* **Pré-entraînement** sur trois tâches (contraste image-texte, appariement image-texte, génération de légende) et
+  **CapFilt** : un légendeur réécrit les légendes du web et un filtre élimine celles qui ne correspondent pas à
+  l'image ; puis affinage sur COCO avec une amorce (« a picture of »).
+* **Génération** : amorce « a photograph of », recherche en faisceau à 5 hypothèses, 30 sous-mots au plus, pas deux
+  fois la même paire de sous-mots. Ces réglages se changent dans l'onglet L3 du site.
+
+Limites : il écrit en anglais, ses légendes sont parfois génériques (« the famous painting of person »), et il a été
+affiné sur le jeu d'entraînement de COCO (son score COCO est un peu optimiste, d'où le test sur les images du projet).
+
+### Corrections apportées au code du workshop
+
+Recherche en faisceau qui interdisait de réécrire un mot déjà écrit (« a man riding a horse » impossible), perte
+divisée par la longueur complétée de 50 jetons (valeurs affichées plusieurs fois trop petites), pas de jeu de validation,
+découpage sans graine, caractéristiques InceptionV3 et EfficientNet écrites sous le même nom de fichier, reprise
+d'entraînement au numéro du checkpoint au lieu de celui de l'époque, et `Tokenizer` retiré de Keras 3 (remplacé par une
+petite classe équivalente).
+
 ## Site de test
 
-Ouvrir `Test_website/index.html` (double-clic, aucun serveur ni connexion nécessaires). Tout est calculé dans le
-navigateur avec **TensorFlow.js** (copie locale dans `js/lib/`), sur la carte graphique via WebGL quand c'est
-possible ; aucune image ne quitte l'ordinateur.
+### Lancement : le serveur local
 
-Les grandes images sont débruitées **par tuiles** qui se chevauchent d'au moins le champ réceptif du réseau :
-le résultat est identique à celui d'un calcul d'un seul bloc, mais aucun tenseur ne dépasse la taille que la carte
-graphique sait adresser exactement (au-delà, certaines cartes donnaient des rayures et une teinte magenta). Au
-chargement, chaque modèle est **vérifié** sur un motif de contrôle calculé par Keras lors de la conversion ; si la
-carte graphique donne un résultat faux même avec de petites tuiles, le site passe sur le processeur (plus lent mais
-exact). Le panneau des modèles affiche le résultat de cette vérification.
+Double-clic sur **`Test_website/lancer_serveur.bat`** : le serveur démarre dans WSL avec l'environnement des
+notebooks (`~/venvs/leyenda`, TensorFlow et PyTorch sur la carte graphique) et le site s'ouvre tout seul sur
+**http://localhost:8765/**. Sous WSL ou Linux : `./Test_website/lancer_serveur.sh`, puis ouvrir l'adresse. Le
+serveur n'écoute que sur `127.0.0.1` : aucune image ne quitte l'ordinateur. Options : `--port 9000`, `--processeur`
+(sans carte graphique) ; `RUCHE_PYTHON=/chemin/vers/python` pour un autre environnement.
 
-Trois onglets :
+`serveur.py` (bibliothèque standard de Python, plus TensorFlow et PyTorch déjà installés pour les notebooks) sert les
+pages du site et calcule les modèles **avec leurs fichiers d'origine** : le `.keras` des notebooks pour les livrables 1
+et 2, le dossier `save_pretrained` de BLIP pour le livrable 3. Le navigateur n'envoie que les pixels et affiche les
+résultats. Chaque bibliothèque n'est importée qu'au premier modèle qui en a besoin : le serveur démarre en une seconde.
+
+**BLIP dans un processus à part.** Cocher BLIP lance un second processus Python, qui importe PyTorch et charge BLIP ;
+le processus principal (TensorFlow, livrables 1 et 2) ne charge jamais PyTorch. Ensemble dans un même processus, les
+deux bibliothèques arrêtaient le serveur sans message au chargement de BLIP. Décocher BLIP arrête ce processus et rend
+toute sa mémoire ; s'il s'arrête de lui-même, le serveur continue, affiche la raison dans sa console et le site
+décoche BLIP. Sous WSL, BLIP est d'abord copié une fois dans `~/.cache/leyenda/` (lire ses 854 Mo de poids
+directement sur un disque Windows est très lent).
+
+| | Avant : tout dans le navigateur | Maintenant : serveur local |
+|---|---|---|
+| Ouverture de la page | les 4 modèles (135 Mo de poids écrits en texte) lus, décodés et envoyés à la carte graphique dès le démarrage : page figée | aucun modèle chargé : la page s'ouvre tout de suite |
+| Calcul | TensorFlow.js ; programmes de la carte graphique recompilés pour chaque taille de tuile, ou calcul sur le processeur quand la carte graphique se trompait : jusqu'à 30 s par image | TensorFlow natif. Mesuré sur une machine **sans** carte graphique (2 cœurs) : 60 ms par classification, 1,7 s pour débruiter une photo de 1024 px, 2,4 s par légende BLIP ; nettement moins sur la carte graphique |
+| Exactitude | export float16, vérifié contre Keras | Keras lui-même : les résultats du notebook |
+| BLIP (224 M paramètres, PyTorch) | impossible | onglet L3 et étape 3 de la pipeline |
+
+**Modèles chargés à la demande.** Toutes les cases sont **décochées à l'ouverture** : cocher un modèle le charge
+(quelques secondes, l'état s'affiche dans son panneau), le décocher libère sa mémoire. La pipeline charge elle-même
+les modèles choisis qui ne le sont pas encore. Un modèle resté chargé dans le serveur reste coché si l'on recharge
+la page.
+
+Les grandes images sont débruitées **par tuiles** de 1024 pixels qui se chevauchent d'au moins le champ récepteur du
+réseau (49 pixels pour `cae_saut_v2`) : le résultat est identique à celui d'un calcul d'un seul bloc, et la mémoire de
+la carte graphique reste bornée même en « taille d'origine ».
+
+### Mode de secours, sans serveur
+
+Ouvrir directement `Test_website/index.html` marche encore. La page cherche le serveur (elle le détecte aussi s'il
+est lancé après coup) ; s'il ne répond pas, les modèles L1 et L2 tournent **dans le navigateur** avec TensorFlow.js
+(copie locale dans `js/lib/`), à partir des exports de `convertir_modeles.py`, et BLIP est indisponible. Ce mode
+a lui aussi été corrigé : modèles chargés seulement quand on les coche, poids décodés sans figer la page, et tuiles
+toutes de la même taille, si bien que la carte graphique ne compile ses programmes qu'une fois.
+
+Dans ce mode, aucun tenseur ne dépasse la taille que la carte graphique sait adresser exactement (au-delà, certaines
+cartes donnaient des rayures et une teinte magenta). Au chargement, chaque modèle est **vérifié** sur un motif de
+contrôle calculé par Keras lors de la conversion ; si la carte graphique donne un résultat faux même avec de petites
+tuiles, le site passe sur le processeur (plus lent mais exact). Le panneau des modèles affiche le résultat de cette
+vérification.
+
+### Onglets
 
 | Onglet | Ce qu'il fait |
 |---|---|
-| **L1 Classification** | chaque image passe dans les classifieurs activés : classe prédite, confiance, consensus, « En vrai » pour noter les modèles |
-| **L2 Débruitage** | chaque image passe dans les débruiteurs activés ; curseur avant / après, gain de PSNR et SSIM. Par défaut l'image déposée sert de référence propre et le site lui ajoute un bruit gaussien de σ réglable, comme le notebook. En mode « déjà bruitée », pas de référence : seul le bruit estimé avant / après est affiché |
-| **Pipeline** | un dossier (sous-dossiers compris) passe par le classifieur choisi, seules les images avec P(Photo) ≥ seuil continuent vers le débruiteur ; l'étape 3 (captioning) est réservée au livrable 3. On récupère les photos débruitées et un rapport CSV dans un .zip. Option « lot bruité simulé » pour mesurer le vrai gain. Cet onglet suit encore l'ordre d'origine (L1 puis L2) : à inverser d'après l'étude du livrable 2 |
+| **L1 Classification** | chaque image passe dans les classifieurs chargés : classe prédite, confiance, consensus, « En vrai » pour noter les modèles |
+| **L2 Débruitage** | chaque image passe dans les débruiteurs chargés ; curseur avant / après, gain de PSNR et SSIM. Par défaut l'image déposée sert de référence propre et le site lui ajoute un bruit gaussien de σ réglable, comme le notebook. En mode « déjà bruitée », pas de référence : seul le bruit estimé avant / après est affiché |
+| **L3 Légendes** | BLIP écrit une légende pour chaque image. Les réglages de génération se changent dans l'onglet : amorce (« a photograph of », « a picture of », aucune ou libre), recherche en faisceau, longueurs minimale et maximale, répétitions interdites, pénalités de répétition et de longueur, échantillonnage (température, top-p). Chaque nouvelle légende d'une image est gardée sous la précédente pour comparer les réglages ; export CSV |
+| **Pipeline** | un dossier (sous-dossiers compris) passe par le classifieur choisi, seules les images avec P(Photo) ≥ seuil continuent vers le débruiteur, puis BLIP légende les photos débruitées (réglages de l'onglet L3 ; étape sautée si aucun légendeur n'est choisi). On récupère les photos débruitées et un rapport CSV avec les légendes dans un .zip. Option « lot bruité simulé » pour mesurer le vrai gain. Cet onglet suit encore l'ordre d'origine (L1 puis L2) : à inverser d'après l'étude du livrable 2 |
 
 ### Ajouter ou mettre à jour un modèle
 
 1. L'enregistrer dans `models/` (les notebooks le font en fin d'entraînement).
 2. S'il est nouveau, l'ajouter dans `Test_website/catalogue.json`, rubrique `L1_classification` (avec ses classes,
-   dans l'ordre alphabétique des dossiers du dataset) ou `L2_debruitage`.
-3. Lancer `Test_website/convertir_modeles.bat` (Windows) ou `python convertir_modeles.py` (WSL / Linux), puis
-   recharger la page.
+   dans l'ordre alphabétique des dossiers du dataset), `L2_debruitage`, ou `L3_captioning` (avec `"dossier"` : le
+   dossier écrit par `save_pretrained`).
+3. Recharger la page : le serveur relit le catalogue à chaque fois.
+4. Pour le mode navigateur seulement (L1 et L2) : lancer `Test_website/convertir_modeles.bat` (Windows) ou
+   `python convertir_modeles.py` (WSL / Linux).
 
 Le script n'exporte que les modèles nouveaux ou modifiés et **vérifie chaque export** : il refait le calcul du
 réseau avec les poids exportés et le compare à Keras (écart maximal affiché, de l'ordre de 10⁻⁶ pour les

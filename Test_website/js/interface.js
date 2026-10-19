@@ -112,10 +112,12 @@
   }
 
   /* ---------------------------------------------------------------------------
-     Panneau « modèles » d'une tâche : interrupteur actif / en pause, fichier source,
-     taille d'entrée, paramètres, classes, architecture. extra(m) ajoute du HTML.
+     Panneau « modèles » d'une tâche : une case par modèle (cochée = chargé en mémoire,
+     décochée = déchargé ; rien n'est chargé au démarrage), puis fichier source, taille
+     d'entrée, paramètres, classes, architecture. extra(m) ajoute du HTML aux infos,
+     corps(m) remplace le détail d'un modèle chargé (BLIP n'a pas de couches Keras).
      ------------------------------------------------------------------------- */
-  function panneauModeles(conteneur, tache, { extra = () => "", vide = "" } = {}) {
+  function panneauModeles(conteneur, tache, { extra = () => "", vide = "", corps = null } = {}) {
     const liste = RUCHE.modeles.liste(tache);
     // garde ouvert le détail « Architecture » des modèles qui l'étaient avant de redessiner
     const ouverts = new Set(Array.from(conteneur.querySelectorAll(".model")).filter((d) => d.querySelector("details[open]")).map((d) => d.dataset.modele));
@@ -126,36 +128,46 @@
     conteneur.innerHTML = "";
     for (const m of liste) {
       const div = document.createElement("div");
-      div.className = "model" + (m.actif ? "" : " off") + (m.erreur ? " broken" : "");
+      const pret = m.etat === "pret", charge = m.etat === "chargement";
+      div.className = "model" + (pret ? "" : " off") + (m.etat === "erreur" ? " broken" : "") + (charge ? " loading" : "");
       div.style.setProperty("--mc", m.couleur);
-      let corps;
-      if (m.erreur) corps = `<p class="model-err">Erreur : ${esc(m.erreur)}</p>`;
-      else if (!m.meta) corps = `<p class="model-sub">Chargement…</p>`;
+      let detail;
+      if (pret && m.meta) detail = corps ? corps(m) : detailKeras(m, extra);
       else {
-        const mt = m.meta, [h, w, c] = mt.input;
-        const date = mt.date ? mt.date.split("@")[0].split("-").reverse().join("/") : null;
-        const params = mt.params >= 1e6 ? nombre(mt.params / 1e6) + " M" : mt.params.toLocaleString("fr-FR");
-        const taille = w == null ? `taille libre (×${mt.multiple || 1})` : `${w}×${h}`;
-        corps = `
-          ${mt.description ? `<p class="model-desc">${esc(mt.description)}</p>` : ""}
-          <p class="model-sub">${esc(mt.source)}${date ? " · entraîné le " + date : ""}</p>
-          <div class="model-meta"><span>${taille} ${c === 1 ? "gris" : "RGB"}</span><span>${params} param.</span>${extra(m)}</div>
-          ${ligneControle(m)}
-          ${mt.classes ? `<div class="model-classes">${mt.classes.map((n, i) => `<span class="cls"><b>${i}</b>${esc(n)}</span>`).join("")}</div>` : ""}
-          <div class="model-score" data-score></div>
-          <details class="arch"><summary>Architecture (${mt.layers.length} couches)</summary><ol class="stack">${mt.layers.map(ligneCouche).join("")}</ol></details>`;
+        const desc = m.description || (m.meta && m.meta.description) || "";
+        detail = `${desc ? `<p class="model-desc">${esc(desc)}</p>` : ""}`;
+        if (charge) detail += `<div class="model-progress${m.progression == null ? " indet" : ""}"><span style="width:${Math.round((m.progression || 0) * 100)}%"></span></div>`;
+        else if (m.etat === "erreur") detail += `<p class="model-err">Erreur : ${esc(m.erreur || "")}</p>`;
+        else if (!m.disponible) detail += `<p class="model-sub">${m.fichier ? `<code>${esc(m.fichier)}</code> introuvable dans <code>models/</code>` : "indisponible"}</p>`;
+        else detail += `<p class="model-sub">Non chargé : coche la case pour le charger${m.fichier ? ` (<code>${esc(m.fichier)}</code>)` : ""}.</p>`;
       }
+      const etat = { libre: m.disponible ? "non chargé" : "indisponible", chargement: "chargement…", pret: "chargé", erreur: "en erreur" }[m.etat];
       div.innerHTML = `
         <label class="model-head">
           <span class="mtag">${esc(m.nom)}</span>
-          <span class="model-state">${m.erreur ? "en erreur" : !m.net ? "chargement…" : m.actif ? "actif" : "en pause"}</span>
-          <input type="checkbox" class="switch" ${m.actif ? "checked" : ""} ${m.net ? "" : "disabled"} aria-label="Activer ${esc(m.nom)}">
-        </label>${corps}`;
+          <span class="model-state">${etat}</span>
+          <input type="checkbox" class="switch" ${pret || charge ? "checked" : ""} ${m.disponible || pret ? "" : "disabled"} aria-label="Charger ${esc(m.nom)}">
+        </label>${detail}`;
       $(".switch", div).addEventListener("change", (e) => RUCHE.modeles.basculer(m, e.target.checked));
       div.dataset.modele = m.nom;
       if (ouverts.has(m.nom) && div.querySelector("details")) div.querySelector("details").open = true;
       conteneur.appendChild(div);
     }
+  }
+
+  function detailKeras(m, extra) {
+    const mt = m.meta, [h, w, c] = mt.input;
+    const date = mt.date ? mt.date.split("@")[0].split("-").reverse().join("/") : null;
+    const params = mt.params >= 1e6 ? nombre(mt.params / 1e6) + " M" : mt.params.toLocaleString("fr-FR");
+    const taille = w == null ? `taille libre (×${mt.multiple || 1})` : `${w}×${h}`;
+    return `
+      ${mt.description ? `<p class="model-desc">${esc(mt.description)}</p>` : ""}
+      <p class="model-sub">${esc(mt.source)}${date ? " · entraîné le " + date : ""}</p>
+      <div class="model-meta"><span>${taille} ${c === 1 ? "gris" : "RGB"}</span><span>${params} param.</span>${extra(m)}</div>
+      ${ligneControle(m)}
+      ${mt.classes ? `<div class="model-classes">${mt.classes.map((n, i) => `<span class="cls"><b>${i}</b>${esc(n)}</span>`).join("")}</div>` : ""}
+      <div class="model-score" data-score></div>
+      <details class="arch"><summary>Architecture (${mt.layers.length} couches)</summary><ol class="stack">${mt.layers.map(ligneCouche).join("")}</ol></details>`;
   }
 
   const EXPOSANTS = { "-": "⁻", 0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹" };
@@ -164,6 +176,7 @@
   function ligneControle(m) {
     const c = m.controle;
     if (!c) return "";
+    if (c.serveur) return `<p class="model-ctrl">Calculé par le serveur local (Keras) sur ${esc(c.appareil || "?")}.</p>`;
     if (c.processeur) return `<p class="model-ctrl warn">Calcul sur le processeur : la carte graphique donnait un résultat différent de Keras.</p>`;
     if (c.ecart == null) return "";
     const [mant, puiss] = c.ecart.toExponential(0).split("e");
@@ -186,5 +199,5 @@
     return `<li><span>${esc(L.type)}</span><span>${esc(d)}</span></li>`;
   }
 
-  RUCHE.interface = { zoneDepot, comparateur, panneauModeles };
+  RUCHE.interface = { zoneDepot, comparateur, panneauModeles, ligneControle };
 })();

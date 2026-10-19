@@ -1,7 +1,7 @@
 /* =============================================================================
    Onglet 1 : classification (livrable 1)
    -----------------------------------------------------------------------------
-   Chaque image déposée passe dans tous les classifieurs activés :
+   Chaque image déposée passe dans tous les classifieurs chargés (cochés) :
    redimensionnement comme à l'entraînement -> prédiction -> carte de résultats
    (classe prédite, confiance, consensus, « En vrai » pour noter les modèles).
    ============================================================================= */
@@ -72,7 +72,7 @@
 
   function afficherModeles() {
     RUCHE.interface.panneauModeles(panneau, TACHE, {
-      vide: `Aucun classifieur. Ajoute-le dans <code>catalogue.json</code> puis lance <code>convertir_modeles.bat</code>.`,
+      vide: `Aucun classifieur. Ajoute-le dans <code>catalogue.json</code> (et, pour le mode navigateur, lance <code>convertir_modeles.bat</code>).`,
       extra: (m) => { const s = score(m); return s.ms != null ? `<span>~${Math.round(s.ms)} ms</span>` : ""; },
     });
     for (const m of M.liste(TACHE)) {
@@ -215,7 +215,7 @@
       return `<li class="pred${neuf}" style="--mc:${m.couleur}">${tete(m)}
         <span class="plabel">${esc(r.label)}</span><span class="pconf">${fmtPct(p)}</span>${marque}
         <span class="ptrack"><span class="pfill" style="width:${(p * 100).toFixed(2)}%"></span></span></li>`;
-    }).join("") || `<li class="pred-err">Aucun classifieur actif.</li>`;
+    }).join("") || `<li class="pred-err">Aucun classifieur chargé : coche-en un dans le panneau « Les classifieurs ».</li>`;
 
     // consensus (tient compte des classes que chaque modèle connaît)
     const cons = $(".consensus", el);
@@ -261,15 +261,13 @@
   // ---------------------------------------------------------------------------
   // Branchements
   // ---------------------------------------------------------------------------
-  const depot = RUCHE.interface.zoneDepot({
+  RUCHE.interface.zoneDepot({
     zone: $("#l1-depot"),
     inputs: [$("#l1-fichiers")],
     boutons: [[$("#l1-parcourir"), $("#l1-fichiers")]],
     camera: { bouton: $("#l1-webcam"), cadre: $("#l1-cam"), video: $("#l1-cam-video"), capturer: $("#l1-capturer"), fermer: $("#l1-cam-fermer") },
     recevoir: ajouter,
-    pret: () => M.prets(TACHE).length > 0,
   });
-  depot.activer(false);
 
   $("#l1-vider").addEventListener("click", () => {
     cartes.forEach((c) => c.url && URL.revokeObjectURL(c.url));
@@ -279,7 +277,6 @@
   });
 
   RUCHE.on("modeles", () => {
-    depot.activer(M.prets(TACHE).length > 0);
     afficherModeles();
     cartes.forEach(afficherCarte);
     cartes.forEach((c) => enFile(() => analyser(c))); // un modèle activé ou chargé : on complète les cartes

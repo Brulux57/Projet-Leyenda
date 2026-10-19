@@ -1,0 +1,2 @@
+# Scripts lancés par bash (WSL) : fins de ligne Unix, sinon bash refuse de les exécuter
+*.sh text eol=lf

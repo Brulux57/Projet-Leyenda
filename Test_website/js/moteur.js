@@ -14,7 +14,10 @@
    chaque tenseur sous LIMITE valeurs :
      - les grandes images sont débruitées par tuiles qui se chevauchent : chaque tuile
        a une marge au moins égale au champ récepteur du réseau, on ne garde que son
-       centre, et le résultat est identique au calcul sur l'image entière ;
+       centre, et le résultat est identique au calcul sur l'image entière. Toutes les
+       tuiles ont la même taille (celles du bord sont décalées vers l'intérieur) : la
+       carte graphique compile ses programmes une seule fois, au chargement, au lieu
+       de les recompiler pour chaque taille de bord ;
      - les convolutions n'utilisent pas « im2col » (matrice intermédiaire 9 fois plus
        grosse que l'image) ;
      - les très grosses couches denses (classifieur : 20 M de poids) sont découpées.
@@ -24,7 +27,7 @@
 (function (racine) {
   "use strict";
   const RUCHE = (racine.RUCHE = racine.RUCHE || {});
-  const tf = racine.tf;
+  let tf = racine.tf; // TensorFlow.js : chargé par demarrer() (mode navigateur seulement)
   const LIMITE = 1 << 23;          // nombre max de valeurs par tenseur (2^23, marge sous 2^24)
   const LIMITE_DENSE = 1 << 22;    // taille max d'un morceau de matrice dense
 
@@ -32,6 +35,16 @@
   // Démarrage : WebGL (carte graphique) si disponible, sinon processeur
   // ---------------------------------------------------------------------------
   async function demarrer() {
+    if (!tf && typeof document !== "undefined") {
+      await new Promise((res, rej) => {
+        const el = document.createElement("script");
+        el.src = "js/lib/tf.min.js";
+        el.onload = res;
+        el.onerror = () => rej(new Error("TensorFlow.js introuvable (js/lib/tf.min.js)"));
+        document.head.appendChild(el);
+      });
+      tf = racine.tf;
+    }
     if (!tf) throw new Error("TensorFlow.js introuvable (js/lib/tf.min.js)");
     let webgl = false;
     try { webgl = await tf.setBackend("webgl"); } catch (_) { /* WebGL absent */ }
@@ -39,6 +52,9 @@
     await tf.ready();
     if (webgl) {
       tf.env().set("WEBGL_CONV_IM2COL", false); // pas de matrice im2col géante (voir en-tête)
+      // Les tailles des tenseurs passent en paramètres des programmes de la carte graphique au lieu d'y être écrites :
+      // un même programme sert pour toutes les tailles d'image (moins de compilations, qui figent la page).
+      tf.env().set("WEBGL_USE_SHAPES_UNIFORMS", true);
       // WebGL garde les textures libérées pour les réutiliser, sans limite par défaut : avec des images de
       // tailles différentes, la mémoire de la carte graphique gonflerait. Au-delà de 256 Mo, on les supprime.
       tf.env().set("WEBGL_DELETE_TEXTURE_THRESHOLD", 256 * 1024 * 1024);
@@ -82,6 +98,21 @@
     const u16 = new Uint16Array(octets.buffer, octets.byteOffset, octets.byteLength >> 1);
     const table = float16VersFloat32(), out = new Float32Array(u16.length);
     for (let i = 0; i < u16.length; i++) out[i] = table[u16[i]];
+    return out;
+  }
+
+  /** Octets des poids -> Float32Array, par morceaux en rendant la main à la page entre deux morceaux
+      (20 millions de poids float16 à convertir : la page resterait figée sinon). */
+  async function decoderPoidsAsync(octets, type) {
+    if (octets.byteOffset % 4) octets = octets.slice();
+    if (type === "float32") return new Float32Array(octets.buffer, octets.byteOffset, octets.byteLength >> 2);
+    const u16 = new Uint16Array(octets.buffer, octets.byteOffset, octets.byteLength >> 1);
+    const table = float16VersFloat32(), out = new Float32Array(u16.length), PAS = 1 << 20;
+    for (let d = 0; d < u16.length; d += PAS) {
+      const f = Math.min(u16.length, d + PAS);
+      for (let i = d; i < f; i++) out[i] = table[u16[i]];
+      await new Promise((r) => setTimeout(r, 0));
+    }
     return out;
   }
 
@@ -188,8 +219,9 @@
   // ---------------------------------------------------------------------------
   // Modèle
   // ---------------------------------------------------------------------------
-  function creerModele(meta, b64) {
-    const W = decoderPoids(b64, meta.poids_type);
+  /** meta : modele.js ; poids : Float32Array (decoderPoidsAsync) ou texte base64. */
+  function creerModele(meta, poids) {
+    const W = typeof poids === "string" ? decoderPoids(poids, meta.poids_type) : poids;
     const ENTREE = meta.entree || "entree";
     const couches = meta.layers;
 
@@ -285,15 +317,16 @@
         });
         const { cote, marge, coeur } = tuile;
         const pasY = Hp <= cote ? Hp : coeur, pasX = Wp <= cote ? Wp : coeur;
+        const fenH = Math.min(cote, Hp), fenW = Math.min(cote, Wp); // même taille pour toutes les fenêtres
         try {
           for (let y0 = 0; y0 < Hp; y0 += pasY) {
             for (let x0 = 0; x0 < Wp; x0 += pasX) {
-              // centre gardé [y0, y1) x [x0, x1) ; fenêtre calculée = centre + marge (dans l'image)
+              // centre gardé [y0, y1) x [x0, x1) ; fenêtre calculée : centre + marge, décalée vers l'intérieur au
+              // bord de l'image (son début reste un multiple de 8, comme le centre et la marge)
               const y1 = Math.min(y0 + pasY, Hp), x1 = Math.min(x0 + pasX, Wp);
-              const fy0 = Math.max(0, y0 - marge), fy1 = Math.min(Hp, y1 + marge);
-              const fx0 = Math.max(0, x0 - marge), fx1 = Math.min(Wp, x1 + marge);
+              const fy0 = Math.min(Math.max(0, y0 - marge), Hp - fenH), fx0 = Math.min(Math.max(0, x0 - marge), Wp - fenW);
               const r = tf.tidy(() => {
-                const fenetre = Hp === fy1 - fy0 && Wp === fx1 - fx0 ? x : tf.slice(x, [0, fy0, fx0, 0], [1, fy1 - fy0, fx1 - fx0, 3]);
+                const fenetre = fenH === Hp && fenW === Wp ? x : tf.slice(x, [0, fy0, fx0, 0], [1, fenH, fenW, 3]);
                 return tf.slice(executer(fenetre), [0, y0 - fy0, x0 - fx0, 0], [1, y1 - y0, x1 - x0, 3]);
               });
               const d = await r.data();
@@ -380,7 +413,7 @@
   }
 
   RUCHE.moteur = {
-    demarrer, passerSurProcesseur, creerModele, redimensionnerBilineaire, motifControle,
+    demarrer, passerSurProcesseur, creerModele, decoderPoidsAsync, redimensionnerBilineaire, motifControle,
     backend: () => (tf ? tf.getBackend() : null),
   };
 })(typeof window !== "undefined" ? window : globalThis);

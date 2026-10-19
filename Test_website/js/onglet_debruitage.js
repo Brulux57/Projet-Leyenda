@@ -1,7 +1,7 @@
 /* =============================================================================
    Onglet 2 : débruitage (livrable 2)
    -----------------------------------------------------------------------------
-   Chaque image déposée passe dans tous les débruiteurs activés. Deux modes :
+   Chaque image déposée passe dans tous les débruiteurs chargés (cochés). Deux modes :
    - « bruit simulé » (par défaut, comme dans le notebook L2) : l'image déposée est
      la référence propre, on lui ajoute un bruit gaussien de sigma choisi, puis on
      débruite. Le gain est mesuré exactement : PSNR et SSIM avant / après ;
@@ -190,7 +190,7 @@
         ? `<span class="dval">PSNR ${fmtDb(c.avant.psnr)} → <b>${fmtDb(x.psnr)}</b></span><span class="chip ${x.psnr >= c.avant.psnr ? "gain" : "perte"}">${fmtDb(x.psnr - c.avant.psnr, true)}</span>`
         : `<span class="dval">bruit estimé σ ${niveauxGris(c.avant.bruit)} → <b>${niveauxGris(x.bruit)}</b></span>`;
       return `<li class="drow" style="--mc:${m.couleur}">${tete}${mesure}<span class="dms">${Math.round(x.ms)} ms</span></li>`;
-    }).join("") || `<li class="pred-err">Aucun débruiteur actif.</li>`;
+    }).join("") || `<li class="pred-err">Aucun débruiteur chargé : coche-en un dans le panneau « Les débruiteurs ».</li>`;
     $$(".dpick", liste).forEach((b) => b.addEventListener("click", () => { c.choisi = b.dataset.nom; afficherCarte(c); }));
   }
 
@@ -209,7 +209,7 @@
 
   function afficherModeles() {
     RUCHE.interface.panneauModeles(panneau, TACHE, {
-      vide: `Aucun débruiteur. Ajoute-le dans <code>catalogue.json</code> puis lance <code>convertir_modeles.bat</code>.`,
+      vide: `Aucun débruiteur. Ajoute-le dans <code>catalogue.json</code> (et, pour le mode navigateur, lance <code>convertir_modeles.bat</code>).`,
       extra: (m) => {
         const t = cartes.map((c) => c.resultats[m.nom]).filter(Boolean);
         return t.length ? `<span>~${Math.round(t.reduce((s, r) => s + r.ms, 0) / t.length)} ms</span>` : "";
@@ -257,15 +257,13 @@
   // ---------------------------------------------------------------------------
   // Branchements
   // ---------------------------------------------------------------------------
-  const depot = RUCHE.interface.zoneDepot({
+  RUCHE.interface.zoneDepot({
     zone: $("#l2-depot"),
     inputs: [$("#l2-fichiers")],
     boutons: [[$("#l2-parcourir"), $("#l2-fichiers")]],
     camera: { bouton: $("#l2-webcam"), cadre: $("#l2-cam"), video: $("#l2-cam-video"), capturer: $("#l2-capturer"), fermer: $("#l2-cam-fermer") },
     recevoir: ajouter,
-    pret: () => M.prets(TACHE).length > 0,
   });
-  depot.activer(false);
 
   $("#l2-vider").addEventListener("click", () => {
     cartes.forEach((c) => { oublierResultats(c); if (c.url) URL.revokeObjectURL(c.url); });
@@ -275,7 +273,6 @@
   });
 
   RUCHE.on("modeles", () => {
-    depot.activer(M.prets(TACHE).length > 0);
     afficherModeles();
     cartes.forEach(afficherCarte);
     cartes.forEach((c) => enFile(() => analyser(c)));

@@ -1,11 +1,31 @@
-# Notebooks des livrables (entraînement sur GPU : TensorFlow sous WSL2 ou Linux)
-tensorflow>=2.16        # inclut Keras 3
+# Environnement des notebooks et du serveur local du site (Test_website/serveur.py).
+# Installation conseillée, sous WSL2 ou Linux avec une carte NVIDIA :
+#     bash installer_environnement.sh      (ou double-clic sur installer_environnement.bat depuis Windows)
+# Le script crée ~/venvs/leyenda, y installe ce fichier, enregistre le noyau Jupyter « Leyenda (TensorFlow + PyTorch
+# GPU) » et vérifie que les deux bibliothèques voient la carte graphique.
+#
+# TensorFlow et PyTorch partagent les bibliothèques CUDA de l'environnement : ils doivent utiliser la même
+# version majeure de CUDA. TensorFlow 2.21 est compilé pour CUDA 12 ; PyTorch est donc pris dans sa version CUDA 12.9
+# (index ci-dessous), qui gère aussi les cartes RTX 50xx. Une version de PyTorch compilée pour CUDA 13 (cu130) installe
+# ses bibliothèques CUDA 13 dans les mêmes dossiers nvidia/ (cudnn, nccl...) que celles de TensorFlow.
+# TensorFlow 2.21 ne trouve pas seul libcusolver.so.11 dans l'environnement et abandonne alors la carte graphique
+# (« Cannot dlopen some GPU libraries ») : installer_environnement.sh copie leyenda_cuda.py dans l'environnement, qui la
+# charge juste avant le premier import de TensorFlow.
+--extra-index-url https://download.pytorch.org/whl/cu129
+
+tensorflow[and-cuda]==2.21.0    # inclut Keras 3 ; [and-cuda] : bibliothèques CUDA 12 et cuDNN 9 (Linux)
+torch==2.13.0+cu129             # livrable 3 : BLIP
+torchvision==0.28.0+cu129
+transformers
 numpy
 pandas
 matplotlib
 pillow
 scipy
+scikit-learn                    # livrable 3 : t-SNE et sonde linéaire du transfer learning
+ipykernel                       # noyau des notebooks (VS Code, Jupyter)
+ipywidgets                      # barres de progression de Transformers dans les notebooks
 jupyterlab
 
-# Le site de test n'a besoin de rien : il s'ouvre dans le navigateur.
-# convertir_modeles.py n'a besoin que de keras et numpy (avec TensorFlow, PyTorch ou JAX comme backend).
+# Le serveur local du site n'utilise que ces mêmes bibliothèques : lancer_serveur.sh prend ~/venvs/leyenda.
+# convertir_modeles.py (mode navigateur du site) n'a besoin que de keras et numpy.

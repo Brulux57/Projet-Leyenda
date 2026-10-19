@@ -2,8 +2,9 @@
    La Ruche : démarrage du site
    -----------------------------------------------------------------------------
    Onglets de l'en-tête (un par étape du projet, l'adresse #classification,
-   #debruitage ou #pipeline garde l'onglet ouvert au rechargement), pastille
-   d'état, puis chargement des modèles.
+   #debruitage, #legendes ou #pipeline garde l'onglet ouvert au rechargement),
+   pastille d'état, puis recherche du serveur local et liste des modèles (aucun
+   n'est chargé tant qu'on ne le coche pas).
    ============================================================================= */
 (function () {
   "use strict";
@@ -64,5 +65,5 @@
     minuterie = setTimeout(() => { minuterie = null; montrer(etatFixe.texte, etatFixe.type); }, 5000);
   });
 
-  RUCHE.modeles.charger(statut);
+  RUCHE.modeles.demarrer(statut);
 })();

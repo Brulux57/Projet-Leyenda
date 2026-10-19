@@ -21,5 +21,11 @@
       "fichier": "cae_saut.keras",
       "description": "Version 1 : auto-encodeur à connexions de saut, bruit gaussien seul (pour comparer)"
     }
+  },
+  "L3_captioning": {
+    "blip-captioning-base": {
+      "dossier": "blip-captioning-base",
+      "description": "BLIP de Salesforce (ViT-B/16 + décodeur BERT), retenu par Livrable3/L3_2_BLIP.ipynb à la place du modèle CNN + attention + GRU des workshops"
+    }
   }
 }

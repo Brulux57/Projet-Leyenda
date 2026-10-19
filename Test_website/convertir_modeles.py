@@ -1,8 +1,10 @@
 """
-LA RUCHE : conversion des modèles Keras pour le site de test
-=============================================================
+LA RUCHE : conversion des modèles Keras pour le mode navigateur du site de test
+================================================================================
 
-Le site (index.html) fait tous ses calculs dans le navigateur, avec TensorFlow.js. Ce script prend les
+Normalement, le site passe par le serveur local (serveur.py, lancer_serveur.bat) : les fichiers .keras y sont
+calculés directement par TensorFlow, et ce script n'est pas nécessaire. Il sert au mode de secours, quand la
+page est ouverte sans serveur : le navigateur calcule alors avec TensorFlow.js. Ce script prend les
 modèles entraînés par les notebooks (dossier ../models/), exporte leur architecture et leurs poids dans
 modeles/<tâche>/<nom>/ et vérifie que le calcul exporté donne les mêmes résultats que Keras.
 
@@ -10,6 +12,8 @@ Les modèles affichés sur le site sont listés dans catalogue.json, rangés par
 
     "L1_classification" : classifieurs photo / peinture / autre (une probabilité par classe)
     "L2_debruitage"     : débruiteurs (image bruitée en entrée, image débruitée de même taille en sortie)
+    "L3_captioning"     : légendeurs (BLIP, PyTorch) : pas d'export, ils ne tournent que sur le serveur local ;
+                          ils sont seulement listés dans modeles/index.js pour que le site les affiche
 
 Ajouter un modèle : l'enregistrer dans ../models/ (les notebooks le font en fin d'entraînement), ajouter
 une ligne dans catalogue.json, puis lancer ce script et recharger la page.
@@ -46,6 +50,7 @@ TACHES = {
     "L1_classification": {"plage": [0, 255]},
     "L2_debruitage": {"plage": [0, 1]},
 }
+SERVEUR_SEULEMENT = ("L3_captioning",)   # tâches calculées uniquement par serveur.py (pas d'export navigateur)
 IGNOREES = {"InputLayer", "Dropout", "SpatialDropout1D", "SpatialDropout2D", "GaussianNoise",
             "GaussianDropout", "AlphaDropout", "ActivityRegularization",
             "RandomFlip", "RandomRotation", "RandomZoom", "RandomContrast", "RandomBrightness",
@@ -511,9 +516,9 @@ def main():
     except (OSError, ValueError) as e:
         sys.exit(f"catalogue.json illisible : {e}")
     dossier_modeles = os.path.normpath(os.path.join(ICI, catalogue.get("dossier_modeles", "../models")))
-    inconnues = [k for k in catalogue if k != "dossier_modeles" and k not in TACHES]
+    inconnues = [k for k in catalogue if k != "dossier_modeles" and k not in TACHES and k not in SERVEUR_SEULEMENT]
     if inconnues:
-        sys.exit(f"tâche(s) inconnue(s) dans catalogue.json : {inconnues} (attendu : {list(TACHES)})")
+        sys.exit(f"tâche(s) inconnue(s) dans catalogue.json : {inconnues} (attendu : {list(TACHES) + list(SERVEUR_SEULEMENT)})")
 
     disponibles, erreurs = {}, []
     for tache in TACHES:
@@ -548,6 +553,11 @@ def main():
                 if existe:
                     log(f"{etiquette} l'ancien export est conservé")
                     disponibles[tache].append(nom)
+
+    for tache in SERVEUR_SEULEMENT:
+        disponibles[tache] = list(catalogue.get(tache) or {})
+        for nom in disponibles[tache]:
+            log(f"[{tache}/{nom}] calculé par le serveur local seulement (pas d'export navigateur)")
 
     os.makedirs(EXPORTS, exist_ok=True)
     ecrire_index(disponibles)

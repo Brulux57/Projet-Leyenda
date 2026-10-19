@@ -14,7 +14,8 @@
     10. Réglages (boutons segmentés, listes, curseurs)
     11. Débruitage (comparateur avant / après, gain)
     12. Pipeline (source, étapes, bilan)
-    13. Responsive
+    13. Légendes (onglet L3) et chargement des modèles à la demande
+    14. Responsive
    ============================================================================= */
 
 /* ---------- 1. Thème ---------- */
@@ -338,7 +339,8 @@ h1 span { color: var(--honey-deep); }
   padding: 10px 12px; background: var(--surface-2); display: flex; flex-direction: column; gap: 7px;
   transition: opacity .2s; min-width: 0;
 }
-.model.off { opacity: .55; }
+.model.off { opacity: .8; }
+.model.loading { opacity: 1; }
 .model.broken { border-left-color: var(--ko); }
 .model-head { display: flex; align-items: center; gap: 8px; cursor: pointer; min-width: 0; }
 .model-head .mtag { flex: 0 1 auto; }
@@ -558,7 +560,54 @@ tbody tr:last-child td { border-bottom: 0; }
 .num { text-align: right; font-variant-numeric: tabular-nums; }
 .ligne-ecartee td { color: var(--ink-3); }
 
-/* ---------- 13. Responsive ---------- */
+/* ---------- 13. Légendes (onglet L3) et chargement des modèles à la demande ---------- */
+.model-progress { height: 6px; border-radius: 99px; background: var(--surface); border: 1px solid var(--line); overflow: hidden; }
+.model-progress span { display: block; height: 100%; background: var(--mc, var(--honey)); transition: width .25s; }
+.model-progress.indet span { width: 35% !important; animation: va-et-vient 1.1s ease-in-out infinite alternate; }
+@keyframes va-et-vient { from { transform: translateX(-10%); } to { transform: translateX(200%); } }
+.model code, .hint code { font-size: .78em; }
+
+.reglages-l3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 22px; align-items: start; }
+.reglages-l3 .champ-large, .reglages-l3 .champ-groupe { grid-column: 1 / -1; }
+.champ-groupe { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 24px; }
+.reglages-l3 input[type="range"] { width: 100%; }
+.reglages-l3 .range-ligne { flex-wrap: wrap; }
+.reglages-l3 output { font-weight: 700; font-size: .8rem; }
+.reglages-l3 input[type="range"]:disabled + output { opacity: .5; }
+input[type="text"] {
+  font: 700 .9rem "Nunito", sans-serif; color: var(--ink); background: var(--surface); min-width: 0; flex: 1 1 160px;
+  border: 1.5px solid var(--line); border-radius: 12px; padding: 8px 12px;
+}
+input[type="text"]:focus-visible { outline: 3px solid color-mix(in srgb, var(--honey) 60%, transparent); outline-offset: 2px; }
+.reglages-bas { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; padding-top: 12px; border-top: 1px dashed var(--line); }
+.reglages-bas .hint { margin: 0 auto 0 0; flex: 1 1 260px; font-weight: 700; }
+
+.results-l3 { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.thumb-l3 { aspect-ratio: 4 / 3; }
+.thumb-l3::after { display: none; }
+.legende { margin: 0; font: 600 1.18rem/1.3 "Fredoka", sans-serif; color: var(--ink); overflow-wrap: anywhere; }
+.lamorce { color: var(--ink-3); font-weight: 500; }
+.lattente { color: var(--ink-3); font: 500 .95rem "Nunito", sans-serif; }
+.card:not(.done) .lattente { animation: pulse 1s ease-in-out infinite; }
+.lmeta { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: .76rem; font-weight: 700; color: var(--ink-3); }
+.lmeta:empty { display: none; }
+.lhistorique { border-top: 1px dashed var(--line); padding-top: 8px; }
+.lhistorique summary { cursor: pointer; font-size: .8rem; font-weight: 800; color: var(--ink-2); }
+.lhistorique ol { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 8px; }
+.lhistorique li p { margin: 0; font-size: .92rem; color: var(--ink); }
+.lhistorique li small { font-size: .72rem; color: var(--ink-3); font-weight: 700; }
+
+.pl-reglages { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.pl-col .hint { margin: 0; font-size: .8rem; }
+.pl-grille3 { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.pcard3 { border-left: 4px solid var(--mc, var(--honey)); }
+.plegende { margin: 0; font: 600 .98rem/1.3 "Fredoka", sans-serif; color: var(--ink); }
+.td-legende { white-space: normal; min-width: 260px; }
+
+/* ---------- 14. Responsive ---------- */
+@media (max-width: 1100px) {
+  .pl-reglages, .reglages-l3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 @media (max-width: 900px) {
   .layout, .pl-haut { grid-template-columns: 1fr; }
   .top-inner { flex-wrap: wrap; gap: 8px 12px; }
@@ -572,7 +621,7 @@ tbody tr:last-child td { border-bottom: 0; }
   .tab { padding-right: 12px; font-size: .9rem; }
   .dropzone { padding: 30px 16px; }
   .results, .results-large { grid-template-columns: 1fr; }
-  .pl-reglages { grid-template-columns: 1fr; }
+  .pl-reglages, .reglages-l3, .champ-groupe { grid-template-columns: 1fr; }
   .pl-grille { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .reglages { flex-direction: column; align-items: stretch; }
 }
