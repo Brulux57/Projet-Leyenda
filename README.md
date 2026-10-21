@@ -24,7 +24,8 @@ projet/
 │   ├── images_bruitees/  trois images réellement bruitées, pour l'essai final du notebook
 │   └── sorties/          images produites par les démonstrations du notebook (non versionné)
 ├── Livrable3/            captioning : L3_1_modele_workshops.ipynb, puis L3_2_BLIP.ipynb
-│   ├── annotations/      MS COCO 2014 : légendes et objets de train2014 (non versionné ; images : voir le livrable 3)
+│   ├── annotations/      MS COCO 2014 : légendes et objets de train2014 (non versionné)
+│   ├── train2014/        MS COCO 2014 : les 3 611 images utilisées (non versionné)
 │   └── cache_features/   caractéristiques d'images EfficientNetB0 pré-calculées (non versionné)
 ├── models/               TOUS les modèles (non versionnés) et leurs historiques (.csv)
 │   └── blip-captioning-base/   BLIP retenu pour le livrable 3 (save_pretrained, 900 Mo)
@@ -54,7 +55,7 @@ modèles enregistrés.
 | L1 classification, 2 classes | `Livrable1/L1.ipynb` | `Livrable1/dataset/<Classe>/` | `lucky_model2.keras` |
 | L1 classification, 3 classes | `Livrable1/L1,1.ipynb` | `Livrable1/dataset/<Classe>/` | `lucky_model1.1.keras` |
 | L2 débruitage | `Livrable2/L2.ipynb` | `Livrable2/dataset/` | `cae_saut_v2.keras` (+ `_historique.csv`) |
-| L3 captioning, partie 1 : modèle des workshops | `Livrable3/L3_1_modele_workshops.ipynb` | MS COCO 2014 : `Livrable3/annotations/` et images `train2014/` | `l3_attention_*` (modèle abandonné, et ses résultats pour la partie 2) |
+| L3 captioning, partie 1 : modèle des workshops | `Livrable3/L3_1_modele_workshops.ipynb` | MS COCO 2014 : `Livrable3/annotations/` et `Livrable3/train2014/` | `l3_attention_*` (modèle abandonné, et ses résultats pour la partie 2) |
 | L3 captioning, partie 2 : BLIP | `Livrable3/L3_2_BLIP.ipynb` (après la partie 1) | MS COCO 2014, mêmes images de test | `blip-captioning-base/` (retenu) |
 
 Tous les notebooks (L1, L2, L3) se lancent avec le noyau **« Leyenda (TensorFlow + PyTorch GPU) »** (voir
@@ -400,9 +401,9 @@ disque Windows (`/mnt/d/...`) est très lent et peut arrêter le noyau.
 ### Démarche
 
 1. **Données** : MS COCO 2014, les 3 611 images de `train2014` téléchargées pour le workshop (18 065 légendes, 5 par
-   image). Les annotations sont celles du projet, dans `Livrable3/annotations/` ; les images sont lues dans
-   `Livrable3/train2014/` s'il existe, sinon dans le dossier du workshop (`../../workshop/train2014/`). Découpage **par image** 80 / 10 / 10 % (entraînement / validation / test, graine 42), vocabulaire des 5 000
-   mots les plus fréquents, légendes de 20 mots au plus (99,3 % d'entre elles).
+   image), copiées dans le livrable, qui fonctionne seul : annotations dans `Livrable3/annotations/`, images dans
+   `Livrable3/train2014/`. Découpage **par image** 80 / 10 / 10 % (entraînement / validation / test, graine 42),
+   vocabulaire des 5 000 mots les plus fréquents, légendes de 20 mots au plus (99,3 % d'entre elles).
 2. **Transfer learning** : EfficientNetB0 pré-entraîné sur ImageNet, gelé, résume chaque image en 7 × 7 = 49 régions
    de 1280 valeurs (calculées une fois, mises en cache). Ces caractéristiques ont du sens : une simple régression
    logistique reconnaît la super-catégorie du plus grand objet dans **82 %** des cas (35 % en répondant toujours la
@@ -550,7 +551,7 @@ vérification.
 | **L1 Classification** | chaque image passe dans les classifieurs chargés : classe prédite, confiance, consensus, « En vrai » pour noter les modèles |
 | **L2 Débruitage** | chaque image passe dans les débruiteurs chargés ; curseur avant / après, gain de PSNR et SSIM. Par défaut l'image déposée sert de référence propre et le site lui ajoute un bruit gaussien de σ réglable, comme le notebook. En mode « déjà bruitée », pas de référence : seul le bruit estimé avant / après est affiché |
 | **L3 Légendes** | BLIP écrit une légende pour chaque image. Les réglages de génération se changent dans l'onglet : amorce (« a photograph of », « a picture of », aucune ou libre), recherche en faisceau, longueurs minimale et maximale, répétitions interdites, pénalités de répétition et de longueur, échantillonnage (température, top-p). Chaque nouvelle légende d'une image est gardée sous la précédente pour comparer les réglages ; export CSV |
-| **Pipeline** | un dossier (sous-dossiers compris) passe par le classifieur choisi, seules les images avec P(Photo) ≥ seuil continuent vers le débruiteur, puis BLIP légende les photos débruitées (réglages de l'onglet L3 ; étape sautée si aucun légendeur n'est choisi). On récupère les photos débruitées et un rapport CSV avec les légendes dans un .zip. Option « lot bruité simulé » pour mesurer le vrai gain. Cet onglet suit encore l'ordre d'origine (L1 puis L2) : à inverser d'après l'étude du livrable 2 |
+| **Pipeline** | un dossier (sous-dossiers compris) passe par le classifieur choisi, seules les images avec P(Photo) ≥ seuil continuent vers le débruiteur, puis BLIP légende les photos débruitées (réglages de l'onglet L3 ; étape sautée si aucun légendeur n'est choisi). On récupère les photos débruitées et un rapport CSV avec les légendes dans un .zip. Option « lot bruité simulé » : le bruit est ajouté aux photos gardées juste avant le débruiteur (le classifieur voit les images d'origine), pour mesurer le vrai gain. Cet onglet suit encore l'ordre d'origine (L1 puis L2) : à inverser d'après l'étude du livrable 2 |
 
 ### Ajouter ou mettre à jour un modèle
 

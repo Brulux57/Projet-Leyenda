@@ -471,7 +471,7 @@
             <p class="hint" id="pl-aide-leg"></p>
           </div>
           <div class="pl-col pl-col-large">
-            <label class="check"><input type="checkbox" id="pl-simuler"> <span><b>Simuler un lot bruité</b> : ajoute un bruit gaussien aux images avant l'étape 1 et mesure le vrai gain (comme la démonstration du notebook)</span></label>
+            <label class="check"><input type="checkbox" id="pl-simuler"> <span><b>Simuler un lot bruité</b> : ajoute un bruit gaussien aux photos gardées juste avant l'étape 2, puis mesure le vrai gain du débruiteur (le classifieur voit les images d'origine)</span></label>
             <div class="champ" id="pl-sigma-champ" hidden>
               <label class="champ-titre" for="pl-sigma">Niveau de bruit σ</label>
               <div class="range-ligne"><input type="range" id="pl-sigma" min="0.05" max="0.3" step="0.01" value="0.15"><output id="pl-sigma-val" for="pl-sigma"></output></div>
@@ -499,7 +499,6 @@
           <p class="etape-etat"></p>
           <div class="progress" aria-hidden="true"><span></span></div>
           <div class="chips" id="pl-resume1"></div>
-          <p class="hint" id="pl-note1" hidden>Lot bruité : le classifieur a été entraîné sur des images propres et le grain du bruit lui fait souvent prendre une photo pour une peinture. C'est l'étude de cas (b) du notebook L2 ; une piste est de débruiter avant de classer, ou de ré-entraîner le classifieur sur des images bruitées.</p>
         </div>
         <div class="pl-grille" id="pl-grille1"></div>
       </section>

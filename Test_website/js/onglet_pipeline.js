@@ -3,7 +3,8 @@
    -----------------------------------------------------------------------------
    Un dossier d'images entre, les étapes s'enchaînent comme en production :
      1. classification (L1) : on ne garde que les images dont P(Photo) >= seuil ;
-     2. débruitage (L2) : chaque photo gardée est débruitée ;
+     2. débruitage (L2) : chaque photo gardée est débruitée. Avec « Simuler un lot bruité »,
+        le bruit est ajouté juste avant cette étape : le classifieur voit les images d'origine ;
      3. captioning (L3) : BLIP écrit une légende pour chaque photo débruitée
         (réglages de l'onglet L3 ; étape sautée si aucun légendeur n'est choisi).
    Les modèles choisis sont chargés au lancement s'ils ne le sont pas encore.
@@ -216,15 +217,9 @@
         const { img, url: u } = await O.lireImage(it.fichier);
         urls.push(u);
         l.urlOriginale = u; l.largeur = img.naturalWidth; l.hauteur = img.naturalHeight;
-        let x;
-        if (p.simule) { // lot de scans simulé : image réduite + bruit, vue telle quelle par le classifieur
-          const t = O.imageDeTravail(img, p.maxCote);
-          const id = O.versImageData(O.ajouterBruit(t.pixels, p.sigma, O.graine(it.chemin)), t.w, t.h);
-          x = RUCHE.moteur.redimensionnerBilineaire(id.data, t.w, t.h, W, H, C);
-        } else {
-          const px = O.pixelsPleineTaille(img);
-          x = RUCHE.moteur.redimensionnerBilineaire(px.rgba, px.w, px.h, W, H, C);
-        }
+        // le classifieur voit toujours l'image d'origine : le bruit simulé n'est ajouté qu'à l'étape 2
+        const px = O.pixelsPleineTaille(img);
+        const x = RUCHE.moteur.redimensionnerBilineaire(px.rgba, px.w, px.h, W, H, C);
         const { probs } = await clf.net.classer(x);
         l.classe = clf.meta.classes[probs.indexOf(Math.max(...probs))];
         l.pPhoto = probs[iPhoto];
@@ -244,9 +239,8 @@
     progression(1, p.lignes.length, items.length, `${pluriel(p.lignes.length, "image")} analysée${p.lignes.length > 1 ? "s" : ""} avec ${clf.nom} · seuil P(Photo) ≥ ${fmtPct(p.seuil)}`);
     $("#pl-resume1").innerHTML = Object.entries(comptes).map(([k, n]) => `<span class="chip">${esc(k)} : ${n}</span>`).join("") +
       `<span class="chip chip-fort">${photos.length} gardée${photos.length > 1 ? "s" : ""} pour l'étape 2</span>`;
-    $("#pl-note1").hidden = !p.simule;
 
-    // --- Étape 2 : débruitage des photos gardées ---
+    // --- Étape 2 : débruitage des photos gardées (lot simulé : bruit ajouté juste avant le débruiteur) ---
     let faites = 0;
     for (let i = 0; i < photos.length && !p.arret; i++) {
       const l = photos[i];
@@ -326,7 +320,7 @@
       `${pluriel(p.lignes.length, "image")} classée${p.lignes.length > 1 ? "s" : ""}, ` +
       `${p.lignes.filter((l) => l.gardee).length} gardée${p.lignes.filter((l) => l.gardee).length > 1 ? "s" : ""}, ` +
       `${fin.length} débruitée${fin.length > 1 ? "s" : ""}` + (p.leg ? `, ${legendees.length} légendée${legendees.length > 1 ? "s" : ""}` : "") +
-      ` en ${nombre(p.duree, 1)} s` + (p.simule ? ` · lot simulé (bruit σ ${nombre(p.sigma, 2)} ajouté avant l'étape 1)` : "");
+      ` en ${nombre(p.duree, 1)} s` + (p.simule ? ` · lot simulé (bruit σ ${nombre(p.sigma, 2)} ajouté juste avant l'étape 2)` : "");
     $("#pl-zip").disabled = !fin.length;
     $("#pl-tableau tbody").innerHTML = p.lignes.map((l) => {
       const etape2 = !l.gardee ? `<span class="muted">écartée</span>` : l.erreur2 ? `<span class="perr">erreur</span>` : !l.blob ? `<span class="muted">non traitée</span>`
@@ -381,7 +375,7 @@
     passage = null;
     grille1.innerHTML = ""; grille2.innerHTML = ""; grille3.innerHTML = "";
     ["#pl-etape1", "#pl-etape2", "#pl-etape3", "#pl-bilan"].forEach((s) => { $(s).hidden = true; });
-    $("#pl-resume1").innerHTML = ""; $("#pl-resume2").innerHTML = ""; $("#pl-resume3").innerHTML = ""; $("#pl-note1").hidden = true;
+    $("#pl-resume1").innerHTML = ""; $("#pl-resume2").innerHTML = ""; $("#pl-resume3").innerHTML = "";
     majFlux({ etape1: "photos gardées", etape2: "photos débruitées", etape3: "légendes" });
     if (toutEffacer) {
       items = [];
